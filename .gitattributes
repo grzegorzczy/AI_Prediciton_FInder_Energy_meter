@@ -1,0 +1,7 @@
+# Repo powstaje na Windowsie, działa na Ubuntu: w repozytorium zawsze LF.
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.project binary

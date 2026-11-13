@@ -1,0 +1,47 @@
+# Sekrety
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Dane lokalne i wolumeny Dockera
+data/
+volumes/
+*.db
+*.sqlite
+backups/
+
+# Modele analityki (trenowane lokalnie)
+models/
+*.joblib
+*.pkl
+
+# CODESYS: pliki tymczasowe i kompilacji (eksport ST trzymamy w plc/src)
+*.compileinfo
+*.precompilecache
+*.bootinfo
+*.opt
+*.~u
+*.project.~u
+
+# Edytory i systemy
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code: ustawienia lokalne
+.claude/settings.local.json
