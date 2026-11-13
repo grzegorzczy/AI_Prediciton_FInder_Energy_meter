@@ -38,7 +38,12 @@ Kontrakt z PLC: docs/modbus-map.md. Nie zmieniaj go, zgłoś potrzebę zmiany.
    jako "szacowana liczba dni do przekroczenia progu" z przedziałem niepewności.
 
 ## Sposób pracy
-- Etapy 0-7 z docs/plan.md, jeden naraz.
+- Etapy 0-7 z docs/plan.md, jeden naraz. Każdy etap dzielisz na kroki;
+  krok kończy się czymś sprawdzalnym (test, commit).
+- Współpraca z architektem (czat projektu claude.ai) wg docs/workflow.md:
+  plan i raport każdego kroku zapisujesz w docs/handoff/, zatrzymujesz się
+  i czekasz na review architekta oraz moje "ok". Nie zaczynasz kolejnego
+  kroku sam.
 - Przed kodem: krótki plan etapu i lista plików. Czekasz na moje "ok".
 - Po kodzie: testy pytest, potem agent reviewer, potem checklista akceptacji
   w docs/stages/etap-N.md z poleceniami, które sam wykonam.
