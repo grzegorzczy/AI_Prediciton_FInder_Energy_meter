@@ -7,7 +7,7 @@ szacowanie czasu do przekroczenia progu, czat AI po polsku, alarmy, raporty.
 Wszystko działa lokalnie, bez internetu. Chmura jest opcją, domyślnie wyłączoną.
 
 ## Sprzęt
-- Komputer przemysłowy: i5-10210U, 8 GB RAM, 128 GB dysku, Ubuntu, bez GPU.
+- Komputer przemysłowy: i5-10210U, 16 GB RAM (2x8 GB DDR4), dysk NVMe 1 TB, Ubuntu, bez GPU.
 - PLC: JUMO variTRON 300 (CODESYS), serwer Modbus TCP na porcie 502.
 - Licznik Finder 7M.24.8.230.0210, Modbus RTU po RS485, podpięty do PLC.
   Komputer nie rozmawia z licznikiem bezpośrednio.
@@ -27,7 +27,7 @@ Kontrakt z PLC: docs/modbus-map.md. Nie zmieniaj go, zgłoś potrzebę zmiany.
 
 ## Zasady twarde
 1. Do PLC nigdy nie piszemy. Collector tylko czyta rejestry.
-2. Budżet 8 GB RAM: każdy kontener ma mem_limit; podawaj zmierzone zużycie.
+2. Budżet 16 GB RAM (wspólny z JUMO smartWARE, ok. 0,4-1 GB): każdy kontener ma mem_limit; podawaj zmierzone zużycie.
 3. Żadnych danych urządzeń w kodzie: wszystko w config/devices.yaml.
 4. Czat łączy się z bazą kontem tylko do odczytu, z limitem czasu zapytania.
 5. Tryb chmurowy wysyła wyłącznie pytanie, schemat i wynik zapytania;
