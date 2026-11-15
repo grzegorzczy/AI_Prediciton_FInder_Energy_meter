@@ -9,7 +9,7 @@ Najpierw demo na biurku, potem produkt.
 
 ## Sprzęt demo
 
-- Komputer przemysłowy C4350Z-HD: i5-10210U, 8 GB RAM, 128 GB dysku, Ubuntu, bez GPU
+- Komputer przemysłowy C4350Z-HD: i5-10210U, 16 GB RAM (2x8 GB DDR4), dysk NVMe 1 TB, Ubuntu, bez GPU
 - PLC JUMO variTRON 300 (CODESYS V3.5) – master Modbus RTU i serwer Modbus TCP
 - Licznik energii Finder 7M.24.8.230.0210 (RS485, Modbus RTU), podłączony do PLC
 - Czujniki drgań i temperatury łożysk: na razie symulowane
