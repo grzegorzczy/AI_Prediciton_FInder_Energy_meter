@@ -38,9 +38,10 @@ z wpisem `focal` (klasyczny `.list`, bez `signed-by`). Dostosuj nazwę pliku do 
 
 ```bash
 PLIK=/etc/apt/sources.list.d/archive_uri-https_download_docker_com_linux_ubuntu-jammy.list
-sudo cp -a "$PLIK" /home/jumo/docker-apt-source.list.bak-focal-$(date +%Y%m%d)
+KOPIA=/home/jumo/docker-apt-source.list.bak-focal-$(date +%Y%m%d)
+sudo cp -a "$PLIK" "$KOPIA"
 sudo sed -i '/download\.docker\.com/ s/ focal / jammy /' "$PLIK"
-diff /home/jumo/docker-apt-source.list.bak-focal-* "$PLIK"   # tylko linie z focal -> jammy
+diff "$KOPIA" "$PLIK"   # tylko linie z focal -> jammy (zmienna, nie glob: przy drugiej kopii glob dopasuje kilka plików)
 sudo apt update 2>&1 | tail -n 15                            # bez błędów; ostrzeżenia zapisać
 ```
 
@@ -80,6 +81,7 @@ Klucz prywatny **nigdy** nie jest wypisywany ani kopiowany poza komputer. Klucz 
 (decyzja K1-d: `git pull` bez człowieka; dostęp tylko do odczytu jednego repo, w repo brak sekretów).
 
 ```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh      # na czystym komputerze katalog może jeszcze nie istnieć
 ssh-keygen -t ed25519 -C "jumo-ipc deploy key read-only" -f ~/.ssh/ai_predykcja_deploy -N ""
 chmod 600 ~/.ssh/ai_predykcja_deploy
 printf '%s\n' '' 'Host github-ai-predykcja' '  HostName github.com' '  User git' \
@@ -133,7 +135,94 @@ apt-mark showhold
 - W skrypcie `bash -s` **nie wywołuj `ssh` bez `-n`**: zagnieżdżony `ssh` czyta resztę skryptu ze
   standardowego wejścia i przerywa wykonanie.
 
+## 6. Plik `.env` (sekrety)
+
+`.env` nie trafia do repo (`.gitignore`). Hasła generuje komputer i nigdzie ich nie wypisujemy:
+hex (`openssl rand -hex 24`, 48 znaków alfanumerycznych), bo znaki `+ / =` z base64 psują adresy
+połączeń i powłokę. Polecenie nie nadpisze istniejącego `.env`.
+
+```bash
+cd /home/jumo/ai-predykcja && git pull --ff-only
+umask 077
+if [ -e .env ]; then echo "JUZ ISTNIEJE - nie nadpisuje"; else
+  cp .env.example .env
+  for v in POSTGRES_PASSWORD APP_WRITER_PASSWORD APP_READER_PASSWORD MQTT_COLLECTOR_PASSWORD MQTT_INGEST_PASSWORD GF_SECURITY_ADMIN_PASSWORD; do
+    sed -i "s|^${v}=.*|${v}=$(openssl rand -hex 24)|" .env
+  done
+  chmod 600 .env
+fi
+```
+
+Kontrola bez wypisywania wartości (oczekiwane: `600 jumo`, dokładnie 6 zmiennych `*_PASSWORD` po 48 znaków,
+wszystkie różne, `CLOUD_LLM_API_KEY` pusty):
+
+```bash
+stat -c '%a %U' .env; git check-ignore -v .env
+awk -F= '/_PASSWORD=/{printf "%s %d\n",$1,length($2)}' .env
+awk -F= '/_PASSWORD=/{print $2}' .env | sort -u | wc -l
+```
+
+Zasady:
+
+- **Kopia `.env` w menedżerze haseł.** Nie w repo, nie w czacie. Hasła do Grafany odczytasz sam:
+  `grep GF_SECURITY_ADMIN_PASSWORD .env` w swojej konsoli.
+- **Nie generuj `.env` od nowa przy istniejącym wolumenie bazy** (`aip_pgdata`). Obraz ustawia hasło
+  `postgres` tylko przy pierwszym utworzeniu bazy. Hasła `app_writer` i `app_reader` `migrate` aktualizuje
+  przy każdym uruchomieniu, ale `postgres` nie, więc `migrate` zgłosi: `superuser login failed`.
+- **Odzyskanie hasła `postgres`** (po zgubieniu lub podmianie `.env`), obraz ma `local trust` w `pg_hba`
+  (sprawdzone 23.11.2026), więc gniazdo lokalne kontenera nie pyta o hasło. Najpierw wpisz do `.env`
+  nowe `POSTGRES_PASSWORD`, potem:
+
+  ```bash
+  set -a; . ./.env; set +a
+  docker compose exec -T timescaledb psql -U postgres -d energy -v ON_ERROR_STOP=1 -v pw="$POSTGRES_PASSWORD" <<'SQL'
+  ALTER ROLE postgres PASSWORD :'pw';
+  SQL
+  docker compose up -d --build   # migrate odświeży też hasła app_writer i app_reader
+  ```
+
+  Procedura nie była jeszcze wykonana na produkcyjnej bazie (sprawdzone tylko `local trust`).
+- **Hasła w `environment` kontenerów** są widoczne dla użytkowników grupy `docker` przez `docker inspect`.
+  Dlatego nie wklejamy do raportów wyniku `docker compose config`, `docker inspect` ani `env`;
+  walidacja: `docker compose config --quiet`.
+- **`git pull` pod `umask 077`:** pliki w klonie dostają prawa 600. Obraz `migrate` zawiera skrypt i migracje
+  z ustawionymi prawami odczytu przy budowie, więc to mu nie przeszkadza, ale unikaj `umask 077` w powłoce,
+  z której robisz `git pull` (ustaw `umask 022`; `.env` ma własne `chmod 600`).
+
+## 7. Stos Docker Compose (etap 2)
+
+Projekt `ai-predykcja`, kontenery z prefiksem `aip-` (bez kolizji z smartWARE). Sieć `aip_backend`
+`172.31.50.0/24`. Sprawdzone przed wyborem (23.11.2026): zajęte `172.17.0.0/16` (docker0), `172.19.0.0/16`
+(`upgrade_pg_default`, pochodzenie nieznane, prawdopodobnie pozostałość aktualizacji smartWARE; nie ruszamy),
+`172.20.0.0/16` (`smartware_4527022_default`); LAN `192.168.0.0/24`.
+
+```bash
+cd /home/jumo/ai-predykcja
+docker compose config --quiet        # walidacja bez wypisywania haseł
+docker compose up -d --build         # start; po git pull ten sam komunikat stosuje nowe migracje
+docker compose ps -a                 # mosquitto i timescaledb healthy; migrate Exited (0)
+docker compose logs --no-log-prefix migrate
+```
+
+Zasady: **nigdy `docker compose down -v` bez zgody** (kasuje dane); `docker system prune` zabronione
+(dotknęłoby smartWARE); `migrate` nie uruchamia się po restarcie komputera, bo ma `restart: "no"`:
+usługi czekają na bazę same. Mosquitto słucha tylko na `127.0.0.1:1883` (testy lokalne, tunel SSH),
+baza nie ma portu na hoście. Testy integracyjne: `sh tests/run-tests.sh </dev/null` (izolowany projekt
+`aip-test`, sprząta tylko siebie).
+
+W skryptach `bash -s` przekazywanych przez `ssh` dodawaj `</dev/null` do `docker compose run/exec`:
+inaczej polecenie czyta resztę skryptu ze standardowego wejścia i przerywa wykonanie.
+
+## Źródła pobierania (przygotowanie instalacji offline, etap 7)
+
+Obrazy (tag i digest są w `docker-compose.yml`, `db/Dockerfile`, `tests/Dockerfile`):
+`timescale/timescaledb:2.32.1-pg16`, `eclipse-mosquitto:2.0.23`, `python:3.12.16-slim-trixie`.
+Pakiety z PyPI: `psycopg[binary]==3.3.9` (+ `psycopg-binary==3.3.9`, `typing_extensions==4.16.0`) dla `migrate`;
+dla testów dodatkowo `paho-mqtt==2.2.0`, `PyYAML==6.0.4`, `pytest==9.2.0` (+ `iniconfig==2.3.1`,
+`packaging==26.3`, `pluggy==1.7.0`, `Pygments==2.21.0`). Instalacja offline: `docker save`/`docker load`
+obrazów i wheelhouse (`pip download`) tych samych wersji.
+
 ## Czego ten dokument nie obejmuje
 
-Tworzenie `.env` i startu usług (etap 2, k2), zmiany strefy czasowej lub NTP, `apt upgrade`,
-instalacji smartWARE.
+Zmiany strefy czasowej lub NTP, `apt upgrade`, instalacji smartWARE, uruchamiania collectora, ingestu i Grafany
+(kroki k3, k4, k7).
