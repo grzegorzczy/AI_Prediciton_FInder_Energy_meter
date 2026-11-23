@@ -35,11 +35,11 @@ Kolejny licznik dostanie blok od bazy 60 (blok = 50 rejestrów, offsety jak niż
 
 | Rejestr | Offset w bloku | Nazwa | Typ | Jednostka | Uwagi |
 | --- | --- | --- | --- | --- | --- |
-| 10 | 0 | `status` | UINT | – | 0 = OK, 1 = COMM_ERROR (brak odpowiedzi / błąd Modbus RTU), 2 = NO_DATA (licznik nie odpowiedział od startu PLC; do ok. 10 s po starcie) |
-| 11 | 1 | `error_code` | UINT | – | kod `MB_ErrorCodes` z biblioteki IoDrvModbus (0 = brak błędu) |
-| 12 | 2 | `error_count` | UINT | – | liczba wystąpień błędu komunikacji od startu PLC (zbocza), przepełnienie → 0 |
+| 10 | 0 | `status` | UINT | – | 0 = OK, 1 = COMM_ERROR (brak odpowiedzi / błąd Modbus RTU; powrót do 0 dopiero po 3 s bez żadnego błędu), 2 = NO_DATA (licznik nie odpowiedział od startu PLC; do ok. 10 s po starcie) |
+| 11 | 1 | `error_code` | UINT | – | ostatni kod `MB_ErrorCodes` z biblioteki IoDrvModbus w trakcie błędu (161 = 16#A1 = RESPONSE_TIMEOUT); 0 gdy status OK |
+| 12 | 2 | `error_count` | UINT | – | liczba przerw komunikacji (wejść w COMM_ERROR) od startu PLC; jedna przerwa = +1; przepełnienie → 0 |
 | 13 | 3 | – | – | – | zarezerwowane |
-| 14–15 | 4 | `data_age_ms` | UDINT | ms | 0 gdy OK; przy COMM_ERROR czas od ostatniego cyklu bez błędu; przy NO_DATA = 16#FFFFFFFF |
+| 14–15 | 4 | `data_age_ms` | UDINT | ms | 0 gdy OK; przy COMM_ERROR czas od ostatniego potwierdzonego stanu OK (rośnie równo przez całą przerwę); przy NO_DATA = 16#FFFFFFFF |
 | 16–17 | 6 | `active_power` | REAL | W | Pt, znak: + pobór |
 | 18–19 | 8 | `reactive_power` | REAL | var | Qt, znak: − pojemnościowa |
 | 20–21 | 10 | `apparent_power` | REAL | VA | St |
@@ -57,6 +57,12 @@ Kolejny licznik dostanie blok od bazy 60 (blok = 50 rejestrów, offsety jak niż
 | 44–59 | 34 | – | – | – | zarezerwowane (0) |
 
 n1 = energia pobrana – ustalone 23.11.2026 na żywym liczniku (przy P > 0 rośnie n1, n3 = 0); potwierdzenie stanem kWh z wyświetlacza – patrz etap 1.
+
+### Status komunikacji z licznikiem – zachowanie (poprawka 23.11.2026)
+
+`Modbus_Server_COM_Port.xError` pokazuje wynik pojedynczej transakcji i między zapytaniami kanałów wraca na chwilę do FALSE. Dlatego `FB_EnergyMeter` filtruje go: COMM_ERROR od pierwszego błędu, powrót do OK po `tErrorHold` = 3 s bez błędu. Układ rejestrów bez zmian, `MAP_VERSION` = 1. Test 23.11.2026 (odłączenie przewodu RS485): status 1, kod 161, `error_count` 1, `data_age_ms` 5200; po podłączeniu status 0, `error_count` nadal 1.
+
+![Przerwa RS485 – rejestry 10–15](images/etap1/12-rtu-break-status.png)
 
 ## Jak collector ma oceniać ważność danych
 

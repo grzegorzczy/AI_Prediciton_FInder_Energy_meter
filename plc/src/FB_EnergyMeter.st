@@ -9,6 +9,7 @@ VAR_INPUT
     awEnergyMant      : ARRAY[0..7] OF WORD;
     awIdentity        : ARRAY[0..11] OF WORD;
     xSwapWords        : BOOL := FALSE;          // Finder 7M.24: high word first -> FALSE
+    tErrorHold        : TIME := T#3S;           // COMM_ERROR is cleared only after this time without any error
 END_VAR
 VAR_OUTPUT
     rActivePower_W     : REAL;
@@ -27,9 +28,9 @@ VAR_OUTPUT
     awSerial           : ARRAY[0..3] OF WORD;
     sSerial            : STRING(8);
     uiStatus           : UINT;   // 0 = OK, 1 = COMM_ERROR, 2 = NO_DATA (no answer since start)
-    uiErrorCode        : UINT;
-    uiErrorCount       : UINT;   // rising edges of xCommError since start (wraps at 65535)
-    udiDataAge_ms      : UDINT;  // 0 when OK; time since last error-free cycle otherwise
+    uiErrorCode        : UINT;   // last non-zero MB_ErrorCodes value while not OK, 0 when OK
+    uiErrorCount       : UINT;   // number of communication outages since start (wraps at 65535)
+    udiDataAge_ms      : UDINT;  // 0 when OK; time since last confirmed OK state otherwise
 END_VAR
 VAR CONSTANT
     STATUS_OK         : UINT := 0;
@@ -37,25 +38,39 @@ VAR CONSTANT
     STATUS_NO_DATA    : UINT := 2;
 END_VAR
 VAR
-    xErrorPrev : BOOL;
-    xDataSeen  : BOOL;
-    tNow       : TIME;
-    tLastOk    : TIME;
-    uConv      : U_Word32;
-    pbySerial  : POINTER TO BYTE;
-    i          : INT;
+    xErrorSeen       : BOOL;   // at least one raw error since start
+    xErrorActive     : BOOL;   // debounced error: raw error within the last tErrorHold
+    xErrorActivePrev : BOOL;
+    xDataSeen        : BOOL;
+    tNow             : TIME;
+    tLastOk          : TIME;
+    tLastErr         : TIME;
+    uiLastErrCode    : UINT;
+    uConv            : U_Word32;
+    pbySerial        : POINTER TO BYTE;
+    i                : INT;
 END_VAR
 // --- code ---
-// 1. Communication status
+// 1. Communication status (debounced: xError of the COM device drops between transactions;
+//    fixed 23.11.2026 after checklist test 5)
 tNow := TIME();
-IF NOT xCommError THEN
+IF xCommError THEN
+    xErrorSeen := TRUE;
+    tLastErr   := tNow;
+    IF uiModbusErrorCode <> 0 THEN
+        uiLastErrCode := uiModbusErrorCode;
+    END_IF
+END_IF
+
+xErrorActive := xErrorSeen AND ((tNow - tLastErr) < tErrorHold);
+
+IF NOT xErrorActive THEN
     tLastOk := tNow;
 END_IF
-IF xCommError AND NOT xErrorPrev THEN
-    uiErrorCount := uiErrorCount + 1;
+IF xErrorActive AND NOT xErrorActivePrev THEN
+    uiErrorCount := uiErrorCount + 1;            // one outage = one count
 END_IF
-xErrorPrev  := xCommError;
-uiErrorCode := uiModbusErrorCode;
+xErrorActivePrev := xErrorActive;
 
 // Meter has answered at least once when the serial number registers are not zero
 IF (awIdentity[8] <> 0) OR (awIdentity[9] <> 0) THEN
@@ -64,12 +79,16 @@ END_IF
 
 IF NOT xDataSeen THEN
     uiStatus      := STATUS_NO_DATA;
+    uiErrorCode   := uiLastErrCode;
     udiDataAge_ms := 16#FFFFFFFF;
-ELSIF xCommError THEN
+ELSIF xErrorActive THEN
     uiStatus      := STATUS_COMM_ERROR;
+    uiErrorCode   := uiLastErrCode;
     udiDataAge_ms := TIME_TO_UDINT(tNow - tLastOk);
 ELSE
     uiStatus      := STATUS_OK;
+    uiErrorCode   := 0;
+    uiLastErrCode := 0;
     udiDataAge_ms := 0;
 END_IF
 

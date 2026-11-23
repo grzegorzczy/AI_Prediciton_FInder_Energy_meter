@@ -54,6 +54,8 @@ Licencje Modbus na variTRON (Web Cockpit → License management):
 | licznik zwraca wyjątek / inne dane | offset `16#2490` zamiast `16#09BA` | offset szesnastkowo |
 | `mbpoll`: „Connection timed out”, `nc` łączy się z 502 | Serial Gateway włączona | wyłączyć, pełny download |
 | serwer TCP „Not running” + trójkąt | brak klienta – normalne | nic |
+| pierwsza wersja: jedno odłączenie RS485 dawało kilka zliczeń błędu, data_age ok. 600 ms, status chwilami 0 | `xError` urządzenia COM wraca do FALSE między transakcjami | filtr w `FB_EnergyMeter` (`tErrorHold` 3 s) – poprawione 23.11.2026 |
+| `mbpoll: Connection failed: Operation now in progress` zaraz po włączeniu PLC | PLC jeszcze startuje; `mbpoll` nie ponawia połączenia | odczekać ok. 30 s albo pętla z ponawianiem |
 | „The bus is not running” po zmianach | logowanie bez downloadu | Logout → Build → Login with download → Start |
 
 ![Błąd: wszystkie zapytania z błędem](../images/etap1/20-err-rtu-all-timeouts.png)
@@ -74,9 +76,23 @@ Polecenia `mbpoll` z laptopa w cmd: `ssh jumo@192.168.0.213 "<polecenie>"`.
 | 2 | `mbpoll -m tcp -a 1 -t 3:hex -0 -r 0 -c 44 -1 192.168.0.246` | rej. 2 = 1, 10 = 0, 40–43 = `4630 3138 3333 3633` | OK |
 | 3 | `mbpoll -m tcp -a 1 -t 3:float -B -0 -r 16 -c 9 -1 192.168.0.246` | U 220–245 V, f 49,9–50,1 Hz, P zgodne z wyświetlaczem | OK |
 | 4 | dwa odczyty rejestrów 0–1 w odstępie kilku sekund | heartbeat różny | OK |
-| 5 | odłączyć jeden przewód RS485 na 10 s, odczytać rej. 10–15; podłączyć | status 1, error_code ≠ 0, data_age rośnie; potem status 0 | OK |
-| 6 | wyłączyć i włączyć zasilanie PLC (bez CODESYS) | po starcie `mbpoll` znów pokazuje dane | OK |
+| 5 | odłączyć jeden przewód RS485 na 10 s, odczytać rej. 10–15; podłączyć | status 1 w każdym odczycie, error_code ≠ 0, error_count +1, data_age rośnie; ok. 3 s po podłączeniu status 0 | OK po poprawce `FB_EnergyMeter` (23.11.2026): 1 / 161 / 1 / 5200 ms → 0 / 0 / 1 / 0 |
+| 6 | wyłączyć i włączyć zasilanie PLC (bez CODESYS) | po starcie `mbpoll` znów pokazuje dane, heartbeat od małej wartości, error_count = 0 | OK (23.11.2026): heartbeat 86 → 92, rej. 2 = 1, status 0, error_count 0 |
 | 7 | `ModbusTCP_Server_Device` → Serial Gateway | odznaczone | OK |
+
+## Testy 5 i 6 – zrzuty
+
+Przerwa RS485 (po poprawce) – status 1, kod 161, jedna przerwa, data_age 5200 ms; po podłączeniu status 0:
+
+![Przerwa RS485](../images/etap1/12-rtu-break-status.png)
+
+Po restarcie zasilania PLC – heartbeat od małej wartości, status 0, licznik błędów wyzerowany:
+
+![Restart PLC](../images/etap1/13-plc-restart-mbpoll.png)
+
+Błąd: `mbpoll` uruchomiony, zanim PLC wystartował:
+
+![mbpoll przed startem PLC](../images/etap1/24-err-mbpoll-boot-connection-failed.png)
 
 ## Okablowanie
 
