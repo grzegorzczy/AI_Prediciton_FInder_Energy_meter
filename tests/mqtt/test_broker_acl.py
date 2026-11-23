@@ -126,9 +126,15 @@ def test_collector_publishes_and_ingest_receives(collector, ingest):
     assert json.loads(body)["value"] == 240.4
 
 
-def test_collector_cannot_subscribe(collector):
-    assert collector.subscribe("+/+/+/+").is_failure
-    assert collector.subscribe("#").is_failure
+def test_collector_never_receives_data(collector, ingest):
+    """Wbudowany ACL Mosquitto przyznaje subskrypcję zawsze, a prawo odczytu sprawdza przy dostarczaniu.
+    Gwarancja: collector (tylko zapis) nie dostaje żadnej wiadomości, ingest (odczyt) dostaje."""
+    collector.subscribe("+/+/+/+")
+    collector.subscribe("#")
+    ingest.subscribe("+/+/+/+")
+    assert not collector.publish(TOPIC, "{}").is_failure
+    assert ingest.wait_message(), "ingest powinien dostać wiadomość"
+    assert not collector.wait_message(), "collector nie może dostać żadnej wiadomości"
 
 
 def test_ingest_cannot_publish(ingest):
@@ -140,11 +146,17 @@ def test_collector_cannot_publish_outside_four_level_topics(collector):
     assert collector.publish("zaklad1/linia1/finder_7m24_1/voltage/x").is_failure  # 5 poziomów
 
 
-def test_sys_topics_are_not_available(ingest):
-    assert ingest.subscribe("$SYS/#").is_failure
-
-
 def test_config_requires_password_and_persistence():
     text = (REPO / "config" / "mosquitto" / "mosquitto.conf").read_text(encoding="utf-8")
     assert "allow_anonymous false" in text
     assert "persistence true" in text
+    assert "sys_interval 0" in text      # statystyki $SYS wyłączone; ACL i tak nie daje do nich odczytu
+
+
+def test_acl_template_grants_only_minimal_rights():
+    text = (REPO / "config" / "mosquitto" / "acl.conf").read_text(encoding="utf-8")
+    rules = [line.split() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+    assert rules == [
+        ["user", "__COLLECTOR_USER__"], ["topic", "write", "+/+/+/+"],
+        ["user", "__INGEST_USER__"], ["topic", "read", "+/+/+/+"],
+    ]

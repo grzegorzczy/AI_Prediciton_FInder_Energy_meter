@@ -15,12 +15,27 @@ def test_reader_can_select_but_not_write(reader, writer):
         "VALUES ('plc-01', 'PLC', 'zaklad1', 'linia1', 'plc', 'real')")
     assert reader.execute("SELECT count(*) FROM devices").fetchone()[0] == 1
     assert reader.execute("SELECT count(*) FROM measurements").fetchone()[0] == 0
-    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+    # Pierwsza bariera: domyślna transakcja tylko do odczytu.
+    with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
         reader.execute("INSERT INTO devices (device_id, name, site, line, kind, source) "
                        "VALUES ('x', 'x', 'x', 'x', 'plc', 'real')")
 
 
+def test_reader_privileges_are_the_real_boundary(reader):
+    """Rola może sama przestawić default_transaction_read_only (to tylko zabezpieczenie domyślne).
+    Granicą są uprawnienia: nawet po wyłączeniu read-only zapis i DDL są odrzucane."""
+    reader.execute("SET default_transaction_read_only = off")
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        reader.execute("INSERT INTO devices (device_id, name, site, line, kind, source) "
+                       "VALUES ('x', 'x', 'x', 'x', 'plc', 'real')")
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        reader.execute("UPDATE devices SET name = 'x'")
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        reader.execute("DELETE FROM devices")
+
+
 def test_reader_cannot_create_objects(reader):
+    reader.execute("SET default_transaction_read_only = off")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         reader.execute("CREATE TABLE zly (a int)")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):

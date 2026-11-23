@@ -15,4 +15,4 @@ cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 $COMPOSE build pytest
-$COMPOSE run --rm pytest pytest -c /repo/pytest.ini "$@"
+$COMPOSE run --rm -T pytest pytest -c /repo/pytest.ini "$@"
