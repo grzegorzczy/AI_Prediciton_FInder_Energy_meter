@@ -251,7 +251,9 @@ Obrazy (tag i digest są w `docker-compose.yml`, `db/Dockerfile`, `tests/Dockerf
 `timescale/timescaledb:2.32.1-pg16`, `eclipse-mosquitto:2.0.23`, `python:3.12.16-slim-trixie`.
 Pakiety z PyPI: `psycopg[binary]==3.3.9` (+ `psycopg-binary==3.3.9`, `typing_extensions==4.16.0`) dla `migrate`;
 dla testów dodatkowo `paho-mqtt==2.2.0`, `PyYAML==6.0.4`, `pytest==9.2.0` (+ `iniconfig==2.3.1`,
-`packaging==26.3`, `pluggy==1.7.0`, `Pygments==2.21.0`). Instalacja offline: `docker save`/`docker load`
+`packaging==26.3`, `pluggy==1.7.0`, `Pygments==2.21.0`); testy collectora dodają `pymodbus==3.16.2`. Obraz `collector`
+(`pip freeze`, 23.11.2026): `pymodbus==3.16.2`, `paho-mqtt==2.2.0`, `PyYAML==6.0.4` (bez zależności pośrednich).
+Instalacja offline: `docker save`/`docker load`
 obrazów i wheelhouse (`pip download`) tych samych wersji.
 
 ## Czego ten dokument nie obejmuje
