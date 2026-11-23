@@ -233,6 +233,10 @@ docker compose ps -a                 # mosquitto i timescaledb healthy; migrate 
 docker compose logs --no-log-prefix migrate
 ```
 
+Usługa `ingest` startuje razem ze stosem (bez profilu), konsumuje MQTT i zapisuje do bazy (rola `app_writer`).
+Konfiguracja `config/devices.yaml` jest czytana przy starcie przez ingest i collector: po jej zmianie trzeba je zrestartować
+(`docker compose restart ingest`).
+
 Usługa `collector` ma w Compose profil `live` (zdefiniowana i zbudowana w k3, uruchomienie na sprzęcie w k5):
 `docker compose up -d` bez profilu jej nie startuje. Budowa bez startu: `docker compose build collector`.
 
@@ -245,6 +249,21 @@ baza nie ma portu na hoście. Testy integracyjne: `sh tests/run-tests.sh </dev/n
 W skryptach `bash -s` przekazywanych przez `ssh` dodawaj `</dev/null` do `docker compose run/exec`:
 inaczej polecenie czyta resztę skryptu ze standardowego wejścia i przerywa wykonanie.
 
+## Utrata danych przy przerwach (bufory)
+
+Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje przy przerwie i co traci się przy długiej:
+
+| Przerwa | Co chroni dane | Granica | Co ginie po przekroczeniu |
+| --- | --- | --- | --- |
+| broker MQTT niedostępny | bufor w pamięci collectora (`COLLECTOR_BUFFER_MAX` = 20 000) | ok. 25 minut przy 13 wiadomościach na sekundę | **najstarsze** wiadomości (luka na początku przerwy) |
+| ingest lub baza niedostępne | kolejka sesji ingestu w Mosquitto (`max_queued_messages` 50 000, `max_queued_bytes` 20 MB) | ok. 64 minuty przy 13 wiadomościach na sekundę (wiąże liczba wiadomości) | **najnowsze** wiadomości (luka na końcu przerwy) |
+| ingest nie łączy się z brokerem dłużej niż 7 dni | `persistent_client_expiration 7d` w `mosquitto.conf` | 7 dni | broker usuwa sesję wraz z kolejką; od tej chwili wiadomości nie są kolejkowane, aż ingest znów się zasubskrybuje |
+
+Ingest potwierdza wiadomość brokerowi dopiero po zapisie w bazie, więc awaria ingestu lub bazy nie gubi niczego w granicach
+kolejki sesji, a ponowne dostarczenie nie tworzy duplikatów (`ON CONFLICT DO NOTHING`). Przy niedostępnej bazie do ingestu
+dociera najwyżej 100 niepotwierdzonych wiadomości (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze. Dla
+demo akceptowalne; przy dłuższych przerwach trzeba liczyć się z luką w danych.
+
 ## Źródła pobierania (przygotowanie instalacji offline, etap 7)
 
 Obrazy (tag i digest są w `docker-compose.yml`, `db/Dockerfile`, `tests/Dockerfile`):
@@ -252,7 +271,8 @@ Obrazy (tag i digest są w `docker-compose.yml`, `db/Dockerfile`, `tests/Dockerf
 Pakiety z PyPI: `psycopg[binary]==3.3.9` (+ `psycopg-binary==3.3.9`, `typing_extensions==4.16.0`) dla `migrate`;
 dla testów dodatkowo `paho-mqtt==2.2.0`, `PyYAML==6.0.4`, `pytest==9.2.0` (+ `iniconfig==2.3.1`,
 `packaging==26.3`, `pluggy==1.7.0`, `Pygments==2.21.0`); testy collectora dodają `pymodbus==3.16.2`. Obraz `collector`
-(`pip freeze`, 23.11.2026): `pymodbus==3.16.2`, `paho-mqtt==2.2.0`, `PyYAML==6.0.4` (bez zależności pośrednich).
+(`pip freeze`, 23.11.2026): `pymodbus==3.16.2`, `paho-mqtt==2.2.0`, `PyYAML==6.0.4` (bez zależności pośrednich). Obraz `ingest`:
+`paho-mqtt==2.2.0`, `psycopg==3.3.9`, `psycopg-binary==3.3.9`, `PyYAML==6.0.4`, `typing_extensions==4.16.0`.
 Instalacja offline: `docker save`/`docker load`
 obrazów i wheelhouse (`pip download`) tych samych wersji.
 
