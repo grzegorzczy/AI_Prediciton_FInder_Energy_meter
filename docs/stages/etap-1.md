@@ -70,12 +70,12 @@ Polecenia `mbpoll` z laptopa w cmd: `ssh jumo@192.168.0.213 "<polecenie>"`.
 
 | # | Krok | Oczekiwane | Stan |
 | --- | --- | --- | --- |
-| 1 | CODESYS: `Modbus_Server_COM_Port` → Status przez 10 min | Running, Error Counter nie rośnie | OK (krótko) |
+| 1 | CODESYS: `Modbus_Server_COM_Port` → Status przez 10 min | Running, Error Counter nie rośnie | OK |
 | 2 | `mbpoll -m tcp -a 1 -t 3:hex -0 -r 0 -c 44 -1 192.168.0.246` | rej. 2 = 1, 10 = 0, 40–43 = `4630 3138 3333 3633` | OK |
 | 3 | `mbpoll -m tcp -a 1 -t 3:float -B -0 -r 16 -c 9 -1 192.168.0.246` | U 220–245 V, f 49,9–50,1 Hz, P zgodne z wyświetlaczem | OK |
 | 4 | dwa odczyty rejestrów 0–1 w odstępie kilku sekund | heartbeat różny | OK |
-| 5 | odłączyć jeden przewód RS485 na 10 s, odczytać rej. 10–15; podłączyć | status 1, error_code ≠ 0, data_age rośnie; potem status 0 | do wykonania |
-| 6 | wyłączyć i włączyć zasilanie PLC (bez CODESYS) | po starcie `mbpoll` znów pokazuje dane | do wykonania |
+| 5 | odłączyć jeden przewód RS485 na 10 s, odczytać rej. 10–15; podłączyć | status 1, error_code ≠ 0, data_age rośnie; potem status 0 | OK |
+| 6 | wyłączyć i włączyć zasilanie PLC (bez CODESYS) | po starcie `mbpoll` znów pokazuje dane | OK |
 | 7 | `ModbusTCP_Server_Device` → Serial Gateway | odznaczone | OK |
 
 ## Okablowanie
