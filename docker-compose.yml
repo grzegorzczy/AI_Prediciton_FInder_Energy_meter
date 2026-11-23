@@ -113,6 +113,56 @@ services:
     logging: *default-logging
     networks: [backend]
 
+  ingest:
+    build:
+      context: ./services/ingest
+    image: aip-ingest:local
+    container_name: aip-ingest
+    restart: unless-stopped
+    # depends_on porządkuje tylko `compose up`; po restarcie komputera ingest sam czeka na bazę i schemat (U4).
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+      DEVICES_CONFIG: /config/devices.yaml
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_USER: ${MQTT_INGEST_USER:?ustaw w .env}
+      MQTT_PASSWORD: ${MQTT_INGEST_PASSWORD:?ustaw w .env}
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:?ustaw w .env}
+      DB_USER: app_writer
+      DB_PASSWORD: ${APP_WRITER_PASSWORD:?ustaw w .env}
+      INGEST_CLIENT_ID: aip-ingest
+      INGEST_BATCH_MAX: "100"
+      INGEST_FLUSH_S: "1.0"
+      INGEST_MAX_FUTURE_S: "300"
+      INGEST_MAX_PAST_DAYS: "400"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./config/devices.yaml:/config/devices.yaml:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    memswap_limit: 128m
+    healthcheck:
+      # "pętla żyje", a nie "baza i broker działają": niedostępna baza to stan w logu, nie powód do restartu (U4)
+      test: ["CMD", "python", "-m", "ingest.health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    networks: [backend]
+
   collector:
     # Profil `live`: usługa jest zdefiniowana i zbudowana w k3, ale startuje dopiero w k5 (test na sprzęcie);
     # w k5 profil zostaje usunięty. Uruchomienie wcześniej: `docker compose --profile live up -d collector`.

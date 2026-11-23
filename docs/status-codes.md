@@ -44,5 +44,10 @@ kolejność zgłaszałaby fałszywy kod 10.
 | PLC wyłączony lub odłączony od sieci | wykrycie w czasie krótszym niż `timeout_s` + 1 s | `link_status` = 1 w każdym cyklu, bez pomiarów |
 | PLC zatrzymany, ale serwer Modbus nadal odpowiada | 5 s bez zmiany heartbeatu | `link_status` = 2 |
 
+W cyklu rozgrzewki (ok. 1 s po połączeniu collectora z PLC, do pierwszej zmiany heartbeatu) collector nie publikuje niczego,
+także `link_status`: „0” byłoby deklaracją sprawności bez zweryfikowanych danych, a „2” fałszywym alarmem. Przez ten czas panel
+pokazuje poprzedni stan (zwykle `link_status` = 1 z poprzedniej awarii). Jeśli heartbeat nie zmieni się przez 5 s, pojawia się
+`link_status` = 2.
+
 Heartbeat rośnie ok. 6 razy na sekundę, więc próg 5 s jest z dużym zapasem. `meter_error_count` jest licznikiem 16-bitowym
 (po 65535 wraca do 0), a `meter_data_age_ms` przy `NO_DATA` (wartość `FFFFFFFF`) nie jest publikowane.

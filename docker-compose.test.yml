@@ -70,7 +70,7 @@ services:
         condition: service_healthy
     environment:
       REPO_DIR: /repo
-      PYTHONPATH: /repo/services/collector/src
+      PYTHONPATH: /repo/services/collector/src:/repo/services/ingest/src
       DB_HOST: db
       DB_PORT: "5432"
       POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?uzyj tests/run-tests.sh}
