@@ -1,0 +1,128 @@
+# Etap 2, k2: Mosquitto, TimescaleDB, migrate. Collector, ingest i Grafana dochodza w k3, k4, k7.
+# Obrazy przypiete tagiem i digestem (D9). Hasla tylko z .env (regula 6).
+# UWAGA: nie wklejaj wyniku `docker compose config` do raportow (zawiera hasla); uzywaj `config --quiet`.
+name: ai-predykcja
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.23@sha256:6a332cc7a8dbe011cbc076180cbb76b37c6f0f55809682ea08e7980ef0112ad9
+    container_name: aip-mosquitto
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/mosquitto/config/entrypoint.sh"]
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+      MQTT_COLLECTOR_USER: ${MQTT_COLLECTOR_USER:?ustaw w .env}
+      MQTT_COLLECTOR_PASSWORD: ${MQTT_COLLECTOR_PASSWORD:?ustaw w .env}
+      MQTT_INGEST_USER: ${MQTT_INGEST_USER:?ustaw w .env}
+      MQTT_INGEST_PASSWORD: ${MQTT_INGEST_PASSWORD:?ustaw w .env}
+    ports:
+      - "127.0.0.1:1883:1883"   # tylko lokalnie (testy, tunel SSH); nie w LAN
+    volumes:
+      - ./config/mosquitto:/mosquitto/config:ro
+      - aip_mosquitto_data:/mosquitto/data
+    tmpfs:
+      - /run/mosquitto          # plik hasel i ACL powstaja przy starcie, nie sa trwale
+    mem_limit: 64m
+    memswap_limit: 64m
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "1883"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    logging: *default-logging
+    networks: [backend]
+
+  timescaledb:
+    image: timescale/timescaledb:2.32.1-pg16@sha256:5d7a2f9d9d593315368338aa6054fda37d7707b4a12a912e30dcb7523385e2b4
+    container_name: aip-timescaledb
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+      POSTGRES_DB: ${POSTGRES_DB:?ustaw w .env}
+      POSTGRES_USER: ${POSTGRES_USER:?ustaw w .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw w .env}
+      NO_TS_TUNE: "true"        # bez automatycznego strojenia na pamiec calego komputera (U6)
+    command:
+      - postgres
+      - -c
+      - shared_buffers=384MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=30
+      - -c
+      - max_worker_processes=16
+      - -c
+      - timescaledb.max_background_workers=8
+      - -c
+      - max_parallel_workers=4
+      - -c
+      - max_parallel_workers_per_gather=1
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
+      - -c
+      - timescaledb.telemetry_level=off
+    volumes:
+      - aip_pgdata:/var/lib/postgresql/data
+    shm_size: 256m
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging: *default-logging
+    networks: [backend]
+
+  migrate:
+    build:
+      context: ./db
+    image: aip-migrate:local
+    container_name: aip-migrate
+    restart: "no"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:?ustaw w .env}
+      POSTGRES_USER: ${POSTGRES_USER:?ustaw w .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw w .env}
+      APP_WRITER_PASSWORD: ${APP_WRITER_PASSWORD:?ustaw w .env}
+      APP_READER_PASSWORD: ${APP_READER_PASSWORD:?ustaw w .env}
+    volumes:
+      - ./db/migrations:/migrations:ro
+    mem_limit: 64m
+    memswap_limit: 64m
+    logging: *default-logging
+    networks: [backend]
+
+networks:
+  backend:
+    name: aip_backend
+    ipam:
+      config:
+        - subnet: 172.31.50.0/24   # wolna: zajete sa 172.17, 172.19, 172.20; LAN 192.168.0.0/24 omijamy
+
+volumes:
+  aip_pgdata:
+    name: aip_pgdata
+  aip_mosquitto_data:
+    name: aip_mosquitto_data

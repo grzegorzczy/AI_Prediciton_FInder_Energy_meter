@@ -1,0 +1,101 @@
+"""Wspólne fixtury: baza testowa (świeża dla każdego testu), uruchamianie migrate.py, hasła ról."""
+from __future__ import annotations
+
+import os
+import secrets
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+import psycopg
+import pytest
+from psycopg import sql
+
+REPO = Path(os.environ.get("REPO_DIR", "/repo"))
+MIGRATE = REPO / "db" / "migrate.py"
+MIGRATIONS = REPO / "db" / "migrations"
+
+
+@pytest.fixture(scope="session")
+def pg() -> dict:
+    return {
+        "host": os.environ["DB_HOST"],
+        "port": int(os.environ.get("DB_PORT", "5432")),
+        "user": "postgres",
+        "password": os.environ["POSTGRES_PASSWORD"],
+    }
+
+
+@pytest.fixture(scope="session")
+def role_passwords() -> dict:
+    return {"app_writer": secrets.token_hex(16), "app_reader": secrets.token_hex(16)}
+
+
+def admin_connect(pg: dict, dbname: str = "postgres") -> psycopg.Connection:
+    return psycopg.connect(dbname=dbname, autocommit=True, connect_timeout=5, **pg)
+
+
+@pytest.fixture
+def fresh_db(pg):
+    """Pusta baza na czas jednego testu (rozszerzenie timescaledb jest w template1 obrazu)."""
+    name = "t_" + uuid.uuid4().hex[:12]
+    with admin_connect(pg) as conn:
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+    yield name
+    with admin_connect(pg) as conn:
+        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+
+
+@pytest.fixture
+def run_migrate(pg, role_passwords):
+    def _run(dbname, migrations_dir=None, writer_password=None, reader_password=None):
+        env = {
+            **os.environ,
+            "DB_HOST": pg["host"],
+            "DB_PORT": str(pg["port"]),
+            "POSTGRES_DB": dbname,
+            "POSTGRES_USER": pg["user"],
+            "POSTGRES_PASSWORD": pg["password"],
+            "APP_WRITER_PASSWORD": writer_password or role_passwords["app_writer"],
+            "APP_READER_PASSWORD": reader_password or role_passwords["app_reader"],
+            "MIGRATIONS_DIR": str(migrations_dir or MIGRATIONS),
+            "DB_WAIT_S": "5",
+        }
+        return subprocess.run(
+            [sys.executable, str(MIGRATE)], env=env, capture_output=True, text=True, timeout=120
+        )
+
+    return _run
+
+
+@pytest.fixture
+def migrated_db(fresh_db, run_migrate):
+    result = run_migrate(fresh_db)
+    assert result.returncode == 0, result.stderr
+    return fresh_db
+
+
+@pytest.fixture
+def admin(pg, migrated_db):
+    with admin_connect(pg, migrated_db) as conn:
+        yield conn
+
+
+def role_connect(pg: dict, dbname: str, role: str, password: str) -> psycopg.Connection:
+    return psycopg.connect(
+        host=pg["host"], port=pg["port"], dbname=dbname, user=role, password=password,
+        autocommit=True, connect_timeout=5,
+    )
+
+
+@pytest.fixture
+def writer(pg, migrated_db, role_passwords):
+    with role_connect(pg, migrated_db, "app_writer", role_passwords["app_writer"]) as conn:
+        yield conn
+
+
+@pytest.fixture
+def reader(pg, migrated_db, role_passwords):
+    with role_connect(pg, migrated_db, "app_reader", role_passwords["app_reader"]) as conn:
+        yield conn

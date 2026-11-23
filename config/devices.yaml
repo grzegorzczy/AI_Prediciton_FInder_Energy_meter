@@ -1,0 +1,52 @@
+# Źródło prawdy o urządzeniach (reguła 3 w CLAUDE.md): żadnych adresów ani numerów rejestrów w kodzie.
+# Układ rejestrów PLC: docs/modbus-map.md (kontrakt, wersja 1). Zmiana mapy wymaga decyzji Grzegorza.
+# Temat MQTT: {site}/{line}/{device_id}/{metric}; segmenty tylko ASCII, bez spacji (D1).
+
+site: zaklad1
+line: linia1
+
+plc:
+  id: plc-01
+  name: "JUMO variTRON 300"
+  host: 192.168.0.246          # DHCP: po zmianie adresu edytujemy tylko tę linię i restartujemy collector
+  port: 502
+  unit_id: 1
+  function: 4                  # Read Input Registers; jedyna używana funkcja (reguła 1: nigdy nie piszemy do PLC)
+  read: { start: 0, count: 44 }   # rejestry 0–43 jednym zapytaniem
+  poll_interval_s: 1.0
+  map_version: 1               # rejestr 2 musi się zgadzać; inna wartość = błąd konfiguracji
+  heartbeat_timeout_s: 5       # rejestry 0–1 bez zmiany dłużej niż to = "PLC zatrzymany"
+  heartbeat: { offset: 0, type: uint32 }
+  map_version_register: { offset: 2, type: uint16 }
+
+# Profil = układ jednego bloku rejestrów licznika; offsety względem block_base urządzenia.
+profiles:
+  finder_7m24:
+    block_size: 50
+    status: { offset: 0, type: uint16 }          # 0 OK, 1 COMM_ERROR, 2 NO_DATA
+    diagnostics:
+      error_code: { offset: 1, type: uint16 }
+      error_count: { offset: 2, type: uint16 }
+      data_age_ms: { offset: 4, type: uint32, unit: ms }
+    metrics:
+      active_power: { offset: 6, type: real32, unit: W }
+      reactive_power: { offset: 8, type: real32, unit: var }
+      apparent_power: { offset: 10, type: real32, unit: VA }
+      power_factor: { offset: 12, type: real32, unit: "" }
+      frequency: { offset: 14, type: real32, unit: Hz }
+      voltage: { offset: 16, type: real32, unit: V }
+      current: { offset: 18, type: real32, unit: A }
+    # Stan licznika w Wh = mantysa × 10^wykładnik (nie z REAL kWh, który traci rozdzielczość).
+    energy:
+      energy_import_wh: { mantissa: 24, exponent: 26, unit: Wh }
+      energy_export_wh: { mantissa: 27, exponent: 29, unit: Wh }
+    serial: { offset: 30, type: ascii, registers: 4 }
+
+devices:
+  - id: finder_7m24_1
+    name: "Licznik energii Finder 7M.24 nr 1"
+    kind: energy_meter
+    source: real
+    profile: finder_7m24
+    block_base: 10             # rejestry 10–59 (blok 50); czytamy 10–43
+    serial: F0183363           # niezgodność = błąd konfiguracji tego licznika

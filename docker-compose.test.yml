@@ -1,0 +1,90 @@
+# Testy integracyjne w osobnym projekcie Compose (aip-test): dane w tmpfs, losowe hasla testowe,
+# bez gniazda Dockera. Nie dotyka stosu produkcyjnego ani smartWARE.
+# Uruchamiaj przez tests/run-tests.sh (ustawia hasla TEST_* i sprzata tylko projekt aip-test).
+name: aip-test
+
+services:
+  db:
+    image: timescale/timescaledb:2.32.1-pg16@sha256:5d7a2f9d9d593315368338aa6054fda37d7707b4a12a912e30dcb7523385e2b4
+    environment:
+      POSTGRES_DB: energy
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?uzyj tests/run-tests.sh}
+      NO_TS_TUNE: "true"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=30
+      - -c
+      - max_worker_processes=16
+      - -c
+      - timescaledb.max_background_workers=8
+      - -c
+      - timezone=UTC
+      - -c
+      - timescaledb.telemetry_level=off
+      - -c
+      - fsync=off
+    tmpfs:
+      - /var/lib/postgresql/data
+    shm_size: 128m
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d energy"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.23@sha256:6a332cc7a8dbe011cbc076180cbb76b37c6f0f55809682ea08e7980ef0112ad9
+    entrypoint: ["/bin/sh", "/mosquitto/config/entrypoint.sh"]
+    environment:
+      MQTT_COLLECTOR_USER: collector
+      MQTT_COLLECTOR_PASSWORD: ${TEST_MQTT_COLLECTOR_PASSWORD:?uzyj tests/run-tests.sh}
+      MQTT_INGEST_USER: ingest
+      MQTT_INGEST_PASSWORD: ${TEST_MQTT_INGEST_PASSWORD:?uzyj tests/run-tests.sh}
+    volumes:
+      - ./config/mosquitto:/mosquitto/config:ro
+    tmpfs:
+      - /run/mosquitto
+      - /mosquitto/data
+    mem_limit: 64m
+    memswap_limit: 64m
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "1883"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  pytest:
+    build:
+      context: ./tests
+    image: aip-pytest:local
+    depends_on:
+      db:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    environment:
+      REPO_DIR: /repo
+      DB_HOST: db
+      DB_PORT: "5432"
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?uzyj tests/run-tests.sh}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_COLLECTOR_USER: collector
+      MQTT_COLLECTOR_PASSWORD: ${TEST_MQTT_COLLECTOR_PASSWORD:?uzyj tests/run-tests.sh}
+      MQTT_INGEST_USER: ingest
+      MQTT_INGEST_PASSWORD: ${TEST_MQTT_INGEST_PASSWORD:?uzyj tests/run-tests.sh}
+    volumes:                       # tylko to, czego testy potrzebują (bez .env)
+      - ./config:/repo/config:ro
+      - ./db:/repo/db:ro
+      - ./tests:/repo/tests:ro
+      - ./pytest.ini:/repo/pytest.ini:ro
+    working_dir: /repo
+    command: ["pytest", "-c", "/repo/pytest.ini"]
+    mem_limit: 256m
+    memswap_limit: 256m
