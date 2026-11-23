@@ -107,8 +107,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw w .env}
       APP_WRITER_PASSWORD: ${APP_WRITER_PASSWORD:?ustaw w .env}
       APP_READER_PASSWORD: ${APP_READER_PASSWORD:?ustaw w .env}
-    volumes:
-      - ./db/migrations:/migrations:ro
+    # migracje i skrypt są w obrazie (db/Dockerfile); nowe migracje: `docker compose up -d --build`
     mem_limit: 64m
     memswap_limit: 64m
     logging: *default-logging
