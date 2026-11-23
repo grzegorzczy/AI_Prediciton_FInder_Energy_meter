@@ -19,7 +19,11 @@ Do repo nie trafiły żadne sekrety (klucz prywatny nie był nigdzie wypisywany)
 
 Pliki w repo w tym kroku: `docs/handoff/e2-k1-results.md`, ten raport,
 `docs/ops/jumo-ipc-setup.md`, `docs/images/etap2/02-smartware-docker-ps-before.png`.
-Zrzut `01-github-deploy-key-readonly.png` dostarcza Grzegorz (patrz „Otwarte kwestie”).
+Zrzut `01-github-deploy-key-readonly.png` (dostarczył Grzegorz po wypchnięciu raportu): lista
+Deploy keys z wpisem `jumo-ipc`, „Read-only”, odcisk `SHA256:YFDrLXfeh4vBCBaM2JqQQrMEAHKNgm2cbL4Xjws0KcI`
+zgodny z odciskiem klucza na komputerze. GitHub pokazuje przy kluczu „Never used”, mimo że
+klon i `pull` przez niego przeszły; prawdopodobnie opóźnienie wskaźnika po stronie GitHuba (nie sprawdzałem); uwierzytelnienie
+potwierdza komunikat „Hi grzegorzczy/…” i udany klon.
 
 ## Wyniki poleceń z mojej części
 
@@ -97,7 +101,7 @@ Polecenia z laptopa w cmd; w razie wątpliwości do cytowania patrz `docs/ops/ju
 
 ## Otwarte kwestie
 
-- Brak zrzutu `01-github-deploy-key-readonly.png` (dostarcza Grzegorz).
+- Zrzut `01-github-deploy-key-readonly.png` dostarczony i dodany (patrz wyżej).
 - Klucz Dockera w starym `trusted.gpg` (ostrzeżenie `apt`); do etapu 7.
 - `hold` blokuje poprawki Dockera; procedura odblokowania i ostrzeżenie o smartWARE w
   `docs/ops/jumo-ipc-setup.md`.
