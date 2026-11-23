@@ -237,8 +237,9 @@ Usługa `ingest` startuje razem ze stosem (bez profilu), konsumuje MQTT i zapisu
 Konfiguracja `config/devices.yaml` jest czytana przy starcie przez ingest i collector: po jej zmianie trzeba je zrestartować
 (`docker compose restart ingest`).
 
-Usługa `collector` ma w Compose profil `live` (zdefiniowana i zbudowana w k3, uruchomienie na sprzęcie w k5):
-`docker compose up -d` bez profilu jej nie startuje. Budowa bez startu: `docker compose build collector`.
+Usługa `collector` (od k5, bez profilu) startuje razem ze stosem i czyta PLC wyłącznie funkcją FC04. Wstrzymanie odczytów
+bez ruszania reszty stosu: `docker compose stop collector`; wznowienie: `docker compose start collector`. Po zmianie adresu
+PLC w `config/devices.yaml`: `docker compose restart collector ingest`.
 
 Zasady: **nigdy `docker compose down -v` bez zgody** (kasuje dane); `docker system prune` zabronione
 (dotknęłoby smartWARE); `migrate` nie uruchamia się po restarcie komputera, bo ma `restart: "no"`:

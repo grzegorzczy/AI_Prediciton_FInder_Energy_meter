@@ -164,9 +164,7 @@ services:
     networks: [backend]
 
   collector:
-    # Profil `live`: usługa jest zdefiniowana i zbudowana w k3, ale startuje dopiero w k5 (test na sprzęcie);
-    # w k5 profil zostaje usunięty. Uruchomienie wcześniej: `docker compose --profile live up -d collector`.
-    profiles: ["live"]
+    # Odczyt PLC wyłącznie FC04 (reguła 1). Wstrzymanie odczytów bez ruszania reszty stosu: `docker compose stop collector`.
     build:
       context: ./services/collector
     image: aip-collector:local

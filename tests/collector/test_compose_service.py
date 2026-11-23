@@ -25,9 +25,9 @@ def test_collector_limits_and_restart():
     assert svc["restart"] == "unless-stopped"
 
 
-def test_collector_waits_for_broker_but_is_not_started_without_profile():
+def test_collector_starts_with_the_stack_and_waits_for_the_broker():
     svc = service()
-    assert svc["profiles"] == ["live"]                      # do k5; potem profil zostaje usunięty
+    assert "profiles" not in svc                            # od k5 collector startuje razem ze stosem (`compose up -d`)
     assert svc["depends_on"]["mosquitto"]["condition"] == "service_healthy"
 
 
