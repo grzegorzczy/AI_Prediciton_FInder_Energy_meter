@@ -6,15 +6,11 @@ import secrets
 import subprocess
 import sys
 import uuid
-from pathlib import Path
 
-import psycopg
 import pytest
 from psycopg import sql
 
-REPO = Path(os.environ.get("REPO_DIR", "/repo"))
-MIGRATE = REPO / "db" / "migrate.py"
-MIGRATIONS = REPO / "db" / "migrations"
+from dbtools import MIGRATE, MIGRATIONS, admin_connect, role_connect
 
 
 @pytest.fixture(scope="session")
@@ -30,10 +26,6 @@ def pg() -> dict:
 @pytest.fixture(scope="session")
 def role_passwords() -> dict:
     return {"app_writer": secrets.token_hex(16), "app_reader": secrets.token_hex(16)}
-
-
-def admin_connect(pg: dict, dbname: str = "postgres") -> psycopg.Connection:
-    return psycopg.connect(dbname=dbname, autocommit=True, connect_timeout=5, **pg)
 
 
 @pytest.fixture
@@ -80,13 +72,6 @@ def migrated_db(fresh_db, run_migrate):
 def admin(pg, migrated_db):
     with admin_connect(pg, migrated_db) as conn:
         yield conn
-
-
-def role_connect(pg: dict, dbname: str, role: str, password: str) -> psycopg.Connection:
-    return psycopg.connect(
-        host=pg["host"], port=pg["port"], dbname=dbname, user=role, password=password,
-        autocommit=True, connect_timeout=5,
-    )
 
 
 @pytest.fixture

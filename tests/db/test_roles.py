@@ -6,7 +6,7 @@ import time
 import psycopg
 import pytest
 
-from conftest import admin_connect, role_connect
+from dbtools import admin_connect, role_connect
 
 
 def test_reader_can_select_but_not_write(reader, writer):

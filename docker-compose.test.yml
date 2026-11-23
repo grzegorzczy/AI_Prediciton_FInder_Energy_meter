@@ -70,6 +70,7 @@ services:
         condition: service_healthy
     environment:
       REPO_DIR: /repo
+      PYTHONPATH: /repo/services/collector/src
       DB_HOST: db
       DB_PORT: "5432"
       POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?uzyj tests/run-tests.sh}
@@ -82,8 +83,11 @@ services:
     volumes:                       # tylko to, czego testy potrzebują (bez .env)
       - ./config:/repo/config:ro
       - ./db:/repo/db:ro
+      - ./docs:/repo/docs:ro
+      - ./services:/repo/services:ro
       - ./tests:/repo/tests:ro
       - ./pytest.ini:/repo/pytest.ini:ro
+      - ./docker-compose.yml:/repo/docker-compose.yml:ro
     working_dir: /repo
     command: ["pytest", "-c", "/repo/pytest.ini"]
     mem_limit: 256m

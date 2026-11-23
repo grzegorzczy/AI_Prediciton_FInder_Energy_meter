@@ -141,16 +141,21 @@ apt-mark showhold
 hex (`openssl rand -hex 24`, 48 znaków alfanumerycznych), bo znaki `+ / =` z base64 psują adresy
 połączeń i powłokę. Polecenie nie nadpisze istniejącego `.env`.
 
+`umask 077` jest ustawiony **tylko w podpowłoce** `( … )`: w otwartej konsoli zostałby aktywny, a późniejszy `git pull`
+utworzyłby pliki 600/700, nieczytelne dla kontenerów z innym użytkownikiem niż `jumo` (tak było w k2).
+
 ```bash
 cd /home/jumo/ai-predykcja && git pull --ff-only
-umask 077
-if [ -e .env ]; then echo "JUZ ISTNIEJE - nie nadpisuje"; else
-  cp .env.example .env
-  for v in POSTGRES_PASSWORD APP_WRITER_PASSWORD APP_READER_PASSWORD MQTT_COLLECTOR_PASSWORD MQTT_INGEST_PASSWORD GF_SECURITY_ADMIN_PASSWORD; do
-    sed -i "s|^${v}=.*|${v}=$(openssl rand -hex 24)|" .env
-  done
-  chmod 600 .env
-fi
+(
+  umask 077
+  if [ -e .env ]; then echo "JUZ ISTNIEJE - nie nadpisuje"; else
+    cp .env.example .env
+    for v in POSTGRES_PASSWORD APP_WRITER_PASSWORD APP_READER_PASSWORD MQTT_COLLECTOR_PASSWORD MQTT_INGEST_PASSWORD GF_SECURITY_ADMIN_PASSWORD; do
+      sed -i "s|^${v}=.*|${v}=$(openssl rand -hex 24)|" .env
+    done
+    chmod 600 .env
+  fi
+)
 ```
 
 Kontrola bez wypisywania wartości (oczekiwane: `600 jumo`, dokładnie 6 zmiennych `*_PASSWORD` po 48 znaków,
@@ -185,9 +190,33 @@ Zasady:
 - **Hasła w `environment` kontenerów** są widoczne dla użytkowników grupy `docker` przez `docker inspect`.
   Dlatego nie wklejamy do raportów wyniku `docker compose config`, `docker inspect` ani `env`;
   walidacja: `docker compose config --quiet`.
-- **`git pull` pod `umask 077`:** pliki w klonie dostają prawa 600. Obraz `migrate` zawiera skrypt i migracje
-  z ustawionymi prawami odczytu przy budowie, więc to mu nie przeszkadza, ale unikaj `umask 077` w powłoce,
-  z której robisz `git pull` (ustaw `umask 022`; `.env` ma własne `chmod 600`).
+- **`git pull` pod `umask 077`:** pliki w klonie dostają prawa 600. Obrazy `migrate` i `collector` zawierają kod z
+  ustawionymi prawami odczytu przy budowie, ale `config/devices.yaml` jest montowany `:ro` wprost z klona, więc musi być
+  czytelny dla użytkownika kontenera. Dlatego `umask 077` tylko w podpowłoce (jak wyżej), a po każdym `git pull` kontrola
+  praw (niżej).
+
+### Kontrola praw po każdym `git pull`
+
+Oczekiwany wynik: oba polecenia `find` bez żadnych wierszy; `.env` ma `600`.
+
+```bash
+cd /home/jumo/ai-predykcja
+find . -path ./.git -prune -o -type f ! -name .env ! -perm -o=r -print
+find . -path ./.git -prune -o -type d ! -perm -o=rx -print
+stat -c '%a %U %n' .env config/devices.yaml
+```
+
+Naprawa (bez `sudo`, `.env` zostaje 600, `.git` nietknięty; Git śledzi tylko bit wykonywania, więc `git status` pozostaje czysty):
+
+```bash
+find . -path ./.git -prune -o -type d -exec chmod 755 {} +
+find . -path ./.git -prune -o -type f ! -name .env -exec chmod 644 {} +
+chmod 600 .env
+git ls-files -s | awk '$1=="100755"{print $4}' | xargs -r chmod 755   # pliki z bitem wykonywania w repo (obecnie brak)
+```
+
+Zasada dla asystenta: nie wypisuje zawartości `.env` (`cat`, `type`, `grep` po wartościach), także na komputerze;
+`.env` sprawdza tylko po nazwach, długościach i prawach.
 
 ## 7. Stos Docker Compose (etap 2)
 
@@ -203,6 +232,9 @@ docker compose up -d --build         # start; po git pull ten sam komunikat stos
 docker compose ps -a                 # mosquitto i timescaledb healthy; migrate Exited (0)
 docker compose logs --no-log-prefix migrate
 ```
+
+Usługa `collector` ma w Compose profil `live` (zdefiniowana i zbudowana w k3, uruchomienie na sprzęcie w k5):
+`docker compose up -d` bez profilu jej nie startuje. Budowa bez startu: `docker compose build collector`.
 
 Zasady: **nigdy `docker compose down -v` bez zgody** (kasuje dane); `docker system prune` zabronione
 (dotknęłoby smartWARE); `migrate` nie uruchamia się po restarcie komputera, bo ma `restart: "no"`:

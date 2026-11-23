@@ -5,7 +5,7 @@ import shutil
 
 import psycopg
 
-from conftest import MIGRATIONS, admin_connect
+from dbtools import MIGRATIONS, admin_connect
 
 
 def migration_files():

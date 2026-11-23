@@ -63,6 +63,28 @@ def test_plc_connection_follows_contract(cfg):
     assert plc["poll_interval_s"] > 0
 
 
+def test_collector_settings_live_in_configuration(cfg):
+    """Reguła 3 i K3-g: limity czasowe, ponawianie i nazwy metryk statusów są w configu, nie w kodzie."""
+    plc = cfg["plc"]
+    assert plc["timeout_s"] == 2.0
+    assert plc["reconnect"] == {"initial_s": 1, "max_s": 10}
+    assert plc["link_metric"] == "link_status"
+    assert plc["source"] in ("real", "sim")
+    profile = cfg["profiles"]["finder_7m24"]
+    assert profile["status"]["metric"] == "meter_status"
+    assert profile["diagnostics"]["error_count"]["metric"] == "meter_error_count"
+    assert profile["diagnostics"]["data_age_ms"]["metric"] == "meter_data_age_ms"
+    assert profile["diagnostics"]["data_age_ms"]["omit_value"] == 0xFFFFFFFF
+    assert "metric" not in profile["diagnostics"]["error_code"]          # tylko do logu
+
+
+def test_status_metric_names_match_database_constraint(cfg):
+    pattern = re.compile(r"^[a-z0-9_]+$")
+    names = [cfg["plc"]["link_metric"], cfg["profiles"]["finder_7m24"]["status"]["metric"]]
+    names += [d["metric"] for d in cfg["profiles"]["finder_7m24"]["diagnostics"].values() if "metric" in d]
+    assert all(pattern.match(n) for n in names)
+
+
 def test_devices_reference_existing_profile(cfg):
     for dev in cfg["devices"]:
         assert dev["profile"] in cfg["profiles"]
