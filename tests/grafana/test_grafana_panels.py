@@ -84,6 +84,7 @@ def test_overview_age_is_fresh_and_power_is_present(grafana_data):
     now = time.time()
     by_title = {title: target for title, target in targets(DASHES["przeglad"])}
     age = ds_query(expand_vars(by_title["Wiek ostatniego odczytu"]["rawSql"], M1), "table", now - 60, now)
-    assert 0 <= age["frames"][0]["data"]["values"][1][0] < 10
+    expected = time.time() - grafana_data["now"].timestamp()          # dane syntetyczne kończą się w chwili ich utworzenia
+    assert abs(age["frames"][0]["data"]["values"][1][0] - expected) < 5
     power = ds_query(expand_vars(by_title["Moc czynna teraz"]["rawSql"], M1), "time_series", now - 600, now)
     assert power["rows"] > 0
