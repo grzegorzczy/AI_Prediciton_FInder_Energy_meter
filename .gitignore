@@ -39,6 +39,7 @@ models/
 .vscode/
 .idea/
 *.swp
+~$*
 .DS_Store
 Thumbs.db
 desktop.ini
