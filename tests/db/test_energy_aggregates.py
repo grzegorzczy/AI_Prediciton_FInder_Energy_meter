@@ -87,7 +87,9 @@ def fill_random(conn, seconds: int = 3 * 3600, seed: int = 7) -> None:
 def same(a, b) -> bool:
     if a is None or b is None:
         return a is None and b is None
-    return a == pytest.approx(b, rel=1e-9, abs=1e-9)
+    if isinstance(a, float) or isinstance(b, float):
+        return a == pytest.approx(b, rel=1e-9, abs=1e-9)
+    return a == b
 
 
 def compare_with_raw(conn, view: str, width: str) -> int:

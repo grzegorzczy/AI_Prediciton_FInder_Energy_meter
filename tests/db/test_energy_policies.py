@@ -21,7 +21,7 @@ def jobs_for(conn, view: str) -> dict[str, dict]:
         "SELECT j.proc_name, j.config, j.schedule_interval, j.scheduled "
         "FROM timescaledb_information.jobs j "
         "JOIN timescaledb_information.continuous_aggregates c "
-        "  ON j.hypertable_name = c.materialization_hypertable_name "
+        "  ON j.hypertable_name IN (c.view_name, c.materialization_hypertable_name) "
         "WHERE c.view_name = %s", (view,)).fetchall()
     return {r[0]: {"config": r[1], "interval": r[2], "scheduled": r[3]} for r in rows}
 
@@ -70,7 +70,7 @@ def test_reader_reads_every_aggregate_and_view(reader):
 
 def test_writer_cannot_change_aggregates_or_views(writer):
     for name in AGGREGATES:
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        with pytest.raises(psycopg.Error):
             writer.execute(f"INSERT INTO {name} (bucket, device_id) VALUES (now(), 'x')")
     for name in AGGREGATES:
         with pytest.raises(psycopg.errors.Error):

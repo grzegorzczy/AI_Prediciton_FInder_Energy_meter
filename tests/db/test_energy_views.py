@@ -179,6 +179,7 @@ def test_daily_check_refuses_to_extrapolate_below_half_coverage(admin):
 @pytest.mark.parametrize("day, hours", [(date(2026, 10, 25), 25), (date(2026, 3, 29), 23)])
 def test_daily_check_handles_days_with_a_time_change(admin, day, hours):
     seed_devices(admin)
+    admin.execute("SELECT remove_retention_policy('measurements')")        # 29.03 jest starsze niż 90 dni: zadanie retencji skasowałoby dane testu
     start, end = local_midnight(admin, day), local_midnight(admin, day + timedelta(days=1))
     assert (end - start) == timedelta(hours=hours)
     series(admin, "active_power", start, hours * 3600, "100")
@@ -192,3 +193,13 @@ def test_current_day_is_not_complete(admin):
     series(admin, "active_power", datetime.now(timezone.utc) - timedelta(seconds=100), 60, "100")
     today = admin.execute("SELECT (now() AT TIME ZONE 'Europe/Warsaw')::date").fetchone()[0]
     assert one_day(admin, today)["day_complete"] is False
+
+
+def test_daily_check_without_sampling_interval_has_null_coverage(admin):
+    seed_devices(admin, poll_interval_s=None)
+    day = date(2026, 11, 10)
+    full_day(admin, day, 100, COUNTER_100W)
+    row = one_day(admin, day)
+    assert row["coverage"] is None and row["integral_wh"] is None
+    assert row["within_resolution"] is None and row["integral_extrapolated_wh"] is None
+    assert row["counter_delta_wh"] == 2400                      # przyrost licznika nie zależy od okresu próbkowania

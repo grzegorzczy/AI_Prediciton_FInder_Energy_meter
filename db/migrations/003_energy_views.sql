@@ -47,7 +47,9 @@ SELECT
     b.resolution_wh,
     -- całka mocy czynnej z obecnych próbek (Wh) i pokrycie okna próbkami
     b.active_power_sum * b.poll_interval_s / 3600.0         AS energy_integral_wh,
-    LEAST(1.0, b.active_power_n * b.poll_interval_s / 60.0) AS coverage,
+    -- LEAST ignoruje NULL, więc brak okresu próbkowania trzeba obsłużyć jawnie (NULL, nie domysł)
+    CASE WHEN b.poll_interval_s IS NOT NULL
+         THEN LEAST(1.0, b.active_power_n * b.poll_interval_s / 60.0) END AS coverage,
     (b.bucket + INTERVAL '1 minute' <= now())               AS bucket_complete,
     -- przyrost licznika wzorcowego: różnica względem poprzedniego wiaderka z odczytem licznika
     CASE
@@ -111,7 +113,9 @@ SELECT
     b.resolution_wh,
     -- całka mocy czynnej z obecnych próbek (Wh) i pokrycie okna próbkami
     b.active_power_sum * b.poll_interval_s / 3600.0         AS energy_integral_wh,
-    LEAST(1.0, b.active_power_n * b.poll_interval_s / 3600.0) AS coverage,
+    -- LEAST ignoruje NULL, więc brak okresu próbkowania trzeba obsłużyć jawnie (NULL, nie domysł)
+    CASE WHEN b.poll_interval_s IS NOT NULL
+         THEN LEAST(1.0, b.active_power_n * b.poll_interval_s / 3600.0) END AS coverage,
     (b.bucket + INTERVAL '1 hour' <= now())               AS bucket_complete,
     -- przyrost licznika wzorcowego: różnica względem poprzedniego wiaderka z odczytem licznika
     CASE
@@ -168,7 +172,7 @@ SELECT
     device_id,
     day,
     integral_wh,
-    LEAST(1.0, covered_s / day_length_s)                                              AS coverage,
+    CASE WHEN covered_s IS NOT NULL THEN LEAST(1.0, covered_s / day_length_s) END      AS coverage,
     counter_delta_wh,
     CASE WHEN covered_s / day_length_s >= 0.5
          THEN integral_wh / (covered_s / day_length_s) END                            AS integral_extrapolated_wh,
