@@ -250,6 +250,32 @@ baza nie ma portu na hoście. Testy integracyjne: `sh tests/run-tests.sh </dev/n
 W skryptach `bash -s` przekazywanych przez `ssh` dodawaj `</dev/null` do `docker compose run/exec`:
 inaczej polecenie czyta resztę skryptu ze standardowego wejścia i przerywa wykonanie.
 
+## Grafana (od k7)
+
+Usługa `grafana` (kontener `aip-grafana`) startuje ze stosem: obraz **`grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2`** (wersja 13.0.2, wybrana 24.11.2026 jako
+najnowsza stabilna główna; digest sprawdzony po `docker pull` na komputerze), użytkownik 472 (nie-root), `mem_limit` 384 MB, port **3000 na wszystkich interfejsach, HTTP bez TLS** (sieć biurowa, świadoma akceptacja dla demo;
+TLS i odwrotne proxy w etapie 7). Dashboardy i źródło danych są plikami w repo (`grafana/`), montowanymi tylko do odczytu. Opis dla użytkownika: `docs/grafana.md`.
+
+**Klucz `GF_SECURITY_SECRET_KEY` (G7-g).** Szyfruje sekrety w bazie Grafany (m.in. hasło `app_reader` w źródle danych) i musi być w `.env` **przed pierwszym startem** wolumenu `aip_grafana_data`;
+późniejsza zmiana unieważnia zaszyfrowane dane (tak jak `POSTGRES_PASSWORD` i hasło admina). Compose odmawia startu bez niego, także dla innych poleceń (`docker compose ps`, `up`, `restart`…): zmienna jest wymagana w pliku.
+Dopisuje go **Grzegorz** w konsoli komputera (Claude Code nie widzi `.env`), potem przenosi tę jedną linię do kopii `.env` na laptopie:
+
+```bash
+cd /home/jumo/ai-predykcja && ( umask 077; grep -q '^GF_SECURITY_SECRET_KEY=' .env || printf 'GF_SECURITY_SECRET_KEY=%s
+' "$(openssl rand -hex 16)" >> .env ); awk -F= '/^GF_SECURITY_SECRET_KEY=/{print $1, length($2)}' .env; stat -c '%a %U' .env
+```
+
+Oczekiwane: `GF_SECURITY_SECRET_KEY 32` i `600 jumo`.
+
+**Hasło admina** (`GF_SECURITY_ADMIN_PASSWORD`) z `.env` obowiązuje tylko przy pierwszym utworzeniu wolumenu Grafany (jak hasło Postgresa). Jeśli kiedyś wolumen powstanie ze starym hasłem, zmiana w `.env` go nie zmieni:
+trzeba użyć `grafana cli admin reset-admin-password` w kontenerze.
+
+**Kontrola:** `docker compose ps` (grafana `healthy`), `ss -ltn` (nowy tylko port 3000), `docker stats --no-stream aip-grafana`, `curl -s http://127.0.0.1:3000/api/health`.
+Ruch do Grafany jest jawny (HTTP) i hasło admina przechodzi przez sieć biurową bez szyfrowania: nie używaj tego hasła nigdzie indziej.
+
+**Wdrażanie zmian.** Na komputer trafia **wyłącznie to, co jest w `origin/main`** (`git pull --ff-only`, potem kontrola praw plików); nie kopiujemy plików przez `ssh`. Po `git pull` zmiany w `grafana/dashboards/*.json` pojawiają się w Grafanie same
+(odświeżanie co 30 s); zmiany w `docker-compose.yml` wymagają `docker compose up -d`. W lokalnym klonie komputera ustawiono `core.fileMode false`, żeby zmiany bitu wykonania po `chmod` nie psuły `git status`.
+
 ## Agregaty energii: odświeżanie i kontrola (od k6)
 
 Agregaty `energy_1m` i `energy_1h` odświeżają się same (okna: `energy_1m` 7 dni co minutę, `energy_1h` 30 dni co 15 minut).

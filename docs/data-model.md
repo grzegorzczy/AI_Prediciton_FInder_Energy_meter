@@ -109,6 +109,20 @@ zostają na etap 4, przed wyborem źródła kosztów.
 
 Wydajność widoków (`LAG` nad całym agregatem): wynik `EXPLAIN ANALYZE` na prawdziwych danych jest w raporcie `docs/handoff/e2-k6-report.md`.
 
+### `data_windows` (migracja `004_data_windows.sql`, k7)
+
+Okna testów i przerw w danych: adnotacje na wykresach Grafany i wykluczenia w analityce.
+
+| Kolumna | Typ | Opis |
+| --- | --- | --- |
+| id | BIGSERIAL PK | |
+| start_time, end_time | TIMESTAMPTZ | granice okna (`end_time >= start_time`) |
+| kind | TEXT | rodzaj, małe litery, cyfry i `_` (np. `power_outage`, `rs485_break`, `deploy`, `calm_window`) |
+| description | TEXT | opis po polsku |
+| exclude_from_analytics | BOOLEAN | `TRUE` dla przerw i zakłóceń; `FALSE` tylko dla okna referencyjnego (`calm_window`), które nie jest przerwą |
+
+Tabela jest tylko do odczytu dla aplikacji (`app_reader` ma `SELECT`, `app_writer` nic); wpisy dodaje wyłącznie `migrate`: każde nowe okno to nowa migracja z `INSERT`.
+
 ### `machine_states`
 
 | Kolumna | Typ | Opis |
