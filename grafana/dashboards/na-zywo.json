@@ -1,0 +1,947 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.6)",
+        "name": "Okna testów i przerw",
+        "target": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT start_time AS time, end_time AS \"timeEnd\", kind AS tags, description AS text FROM data_windows WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time",
+          "refId": "Anno"
+        }
+      }
+    ]
+  },
+  "description": "Pomiary z licznika w czasie rzeczywistym (odświeżanie 5 s, domyślnie ostatnie 15 min). Dla zakresów dłuższych niż kilka godzin użyj dashboardów „Jakość energii” i „Energia i profil” (dane zagregowane).",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Przegląd",
+      "type": "link",
+      "url": "/d/aip-przeglad"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Licznik na żywo",
+      "type": "link",
+      "url": "/d/aip-na-zywo"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Jakość energii",
+      "type": "link",
+      "url": "/d/aip-jakosc"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Energia i profil",
+      "type": "link",
+      "url": "/d/aip-energia"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Stan i diagnostyka",
+      "type": "link",
+      "url": "/d/aip-diagnostyka"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Napięcie fazowe [V]. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Napięcie U\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'voltage' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Napięcie U: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Prąd [A]. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": "amp"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 3,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Prąd I\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'current' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Prąd I: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc czynna P [W]: faktycznie pobierana energia. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 6,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Moc czynna P\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'active_power' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc czynna P: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc bierna Q [var]. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": "reactivevoltamp"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 9,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Moc bierna Q\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'reactive_power' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc bierna Q: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc pozorna S [VA] = U × I. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": "voltamp"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 12,
+        "y": 0
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Moc pozorna S\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'apparent_power' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc pozorna S: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "PF = P / S (cos φ przy przebiegach sinusoidalnych), bez jednostki. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 15,
+        "y": 0
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Współczynnik mocy PF\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'power_factor' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Współczynnik mocy PF: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Częstotliwość sieci [Hz]. Ostatnia wartość w oknie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 18,
+        "y": 0
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Częstotliwość f\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'frequency' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Częstotliwość f: teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Ostatnia, minimalna, maksymalna i średnia wartość każdej wielkości w wybranym oknie czasu.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT CASE metric WHEN 'voltage' THEN 'Napięcie U [V]' WHEN 'current' THEN 'Prąd I [A]' WHEN 'active_power' THEN 'Moc czynna P [W]' WHEN 'reactive_power' THEN 'Moc bierna Q [var]' WHEN 'apparent_power' THEN 'Moc pozorna S [VA]' WHEN 'power_factor' THEN 'PF' ELSE 'Częstotliwość f [Hz]' END AS \"Wielkość\", (array_agg(value ORDER BY time DESC))[1] AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency') GROUP BY metric ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Wartości w oknie",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Napięcie fazowe [V]. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Napięcie U\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'voltage' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Napięcie U",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Prąd [A]. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": "amp"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Prąd I\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'current' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Prąd I",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc czynna P [W]: faktycznie pobierana energia. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Moc czynna P\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'active_power' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc czynna P",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc bierna Q [var]. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": "reactivevoltamp"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Moc bierna Q\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'reactive_power' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc bierna Q",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc pozorna S [VA] = U × I. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": "voltamp"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Moc pozorna S\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'apparent_power' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc pozorna S",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "PF = P / S (cos φ przy przebiegach sinusoidalnych), bez jednostki. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Współczynnik mocy PF\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'power_factor' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Współczynnik mocy PF",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Częstotliwość sieci [Hz]. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Częstotliwość f\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'frequency' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Częstotliwość f",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": [
+    "AI Predykcja"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Licznik",
+        "multi": false,
+        "name": "device",
+        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "Europe/Warsaw",
+  "title": "Licznik na żywo",
+  "uid": "aip-na-zywo",
+  "version": 1
+}

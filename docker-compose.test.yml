@@ -37,6 +37,45 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+    networks:
+      default:
+        aliases: [timescaledb]      # provisioning źródła danych Grafany używa tej nazwy hosta (jak w produkcji)
+
+  grafana:
+    # Ta sama wersja, konfiguracja i provisioning co produkcja; losowe hasła; dane w tmpfs.
+    image: grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${TEST_GRAFANA_ADMIN_PASSWORD:?uzyj tests/run-tests.sh}
+      GF_SECURITY_SECRET_KEY: ${TEST_GRAFANA_SECRET_KEY:?uzyj tests/run-tests.sh}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ALLOW_EMBEDDING: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: Europe/Warsaw
+      GF_USERS_DEFAULT_LANGUAGE: pl-PL
+      AIP_DB_NAME: energy
+      AIP_DB_READER_PASSWORD: ${TEST_APP_READER_PASSWORD:?uzyj tests/run-tests.sh}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    tmpfs:
+      - /var/lib/grafana:mode=1777
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
 
   mosquitto:
     image: eclipse-mosquitto:2.0.23@sha256:6a332cc7a8dbe011cbc076180cbb76b37c6f0f55809682ea08e7980ef0112ad9
@@ -68,8 +107,13 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_healthy
+      grafana:
+        condition: service_healthy
     environment:
       REPO_DIR: /repo
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_ADMIN_PASSWORD: ${TEST_GRAFANA_ADMIN_PASSWORD:?uzyj tests/run-tests.sh}
+      TEST_APP_READER_PASSWORD: ${TEST_APP_READER_PASSWORD:?uzyj tests/run-tests.sh}
       PYTHONPATH: /repo/services/collector/src:/repo/services/ingest/src
       DB_HOST: db
       DB_PORT: "5432"
@@ -84,6 +128,7 @@ services:
       - ./config:/repo/config:ro
       - ./db:/repo/db:ro
       - ./docs:/repo/docs:ro
+      - ./grafana:/repo/grafana:ro
       - ./services:/repo/services:ro
       - ./tests:/repo/tests:ro
       - ./pytest.ini:/repo/pytest.ini:ro

@@ -8,7 +8,11 @@ cd "$(dirname "$0")/.."
 TEST_POSTGRES_PASSWORD="$(openssl rand -hex 16)"
 TEST_MQTT_COLLECTOR_PASSWORD="$(openssl rand -hex 16)"
 TEST_MQTT_INGEST_PASSWORD="$(openssl rand -hex 16)"
+TEST_APP_READER_PASSWORD="$(openssl rand -hex 16)"
+TEST_GRAFANA_ADMIN_PASSWORD="$(openssl rand -hex 16)"
+TEST_GRAFANA_SECRET_KEY="$(openssl rand -hex 16)"
 export TEST_POSTGRES_PASSWORD TEST_MQTT_COLLECTOR_PASSWORD TEST_MQTT_INGEST_PASSWORD
+export TEST_APP_READER_PASSWORD TEST_GRAFANA_ADMIN_PASSWORD TEST_GRAFANA_SECRET_KEY
 
 COMPOSE="docker compose -p aip-test -f docker-compose.test.yml"
 cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }

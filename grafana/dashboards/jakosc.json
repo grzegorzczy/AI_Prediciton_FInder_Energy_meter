@@ -1,0 +1,597 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.6)",
+        "name": "Okna testów i przerw",
+        "target": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT start_time AS time, end_time AS \"timeEnd\", kind AS tags, description AS text FROM data_windows WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time",
+          "refId": "Anno"
+        }
+      }
+    ]
+  },
+  "description": "Napięcie, częstotliwość i współczynnik mocy z agregatu minutowego. Pasma (±% napięcia, ±Hz częstotliwości) są wartościami orientacyjnymi ze zmiennych dashboardu, nie oceną zgodności z normą.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Przegląd",
+      "type": "link",
+      "url": "/d/aip-przeglad"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Licznik na żywo",
+      "type": "link",
+      "url": "/d/aip-na-zywo"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Jakość energii",
+      "type": "link",
+      "url": "/d/aip-jakosc"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Energia i profil",
+      "type": "link",
+      "url": "/d/aip-energia"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Stan i diagnostyka",
+      "type": "link",
+      "url": "/d/aip-diagnostyka"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Napięcie [V] w kroku wykresu: minimum, średnia i maksimum z agregatu minutowego, z granicami pasma orientacyjnego (napięcie znamionowe ± pasmo %).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 1,
+          "unit": "volt"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*granica pasma"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(voltage_min) AS \"Minimum\", sum(voltage_sum) / nullif(sum(voltage_n), 0) AS \"Średnia\", max(voltage_max) AS \"Maksimum\", $u_nom * (1 - $u_band_pct / 100.0) AS \"Dolna granica pasma\", $u_nom * (1 + $u_band_pct / 100.0) AS \"Górna granica pasma\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Napięcie (min, średnia, maks.)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Liczba minut w wybranym zakresie, w których minimum lub maksimum napięcia wyszło poza pasmo (napięcie znamionowe ± pasmo %). Pasmo jest orientacyjne i nie oznacza oceny zgodności z normą.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, count(*) AS \"Minuty\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND (voltage_min < $u_nom * (1 - $u_band_pct / 100.0) OR voltage_max > $u_nom * (1 + $u_band_pct / 100.0))",
+          "refId": "A"
+        }
+      ],
+      "title": "Minuty z napięciem poza pasmem",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu obok).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, count(*) FILTER (WHERE voltage_n > 0) AS \"Minuty\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device'",
+          "refId": "A"
+        }
+      ],
+      "title": "Minuty z danymi napięcia",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Liczba minut w koszykach po 0,5 V według średniego napięcia minuty, w wybranym zakresie czasu.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 80
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single"
+        },
+        "xTickLabelRotation": -45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT to_char(floor(voltage_sum / voltage_n * 2) / 2, 'FM999.0') AS \"Napięcie [V]\", count(*) AS \"Minuty\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND voltage_n > 0 GROUP BY floor(voltage_sum / voltage_n * 2) ORDER BY floor(voltage_sum / voltage_n * 2)",
+          "refId": "A"
+        }
+      ],
+      "title": "Rozkład napięcia (histogram)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Średnia częstotliwość sieci minus częstotliwość znamionowa [Hz] w kroku wykresu, z granicami pasma (± zmienna).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 3,
+          "unit": "hertz"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*granica"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(frequency_sum) / nullif(sum(frequency_n), 0) - $f_nom AS \"Odchyłka\", $f_band_hz AS \"Górna granica\", -$f_band_hz AS \"Dolna granica\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Odchyłka częstotliwości od znamionowej",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Współczynnik mocy PF (średnia w kroku wykresu) oraz stosunek mocy biernej do czynnej Q/P (średnie w kroku; pusty, gdy P ≈ 0).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 2,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\", (sum(reactive_power_sum) / nullif(sum(reactive_power_n), 0)) / nullif(sum(active_power_sum) / nullif(sum(active_power_n), 0), 0) AS \"Q/P\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Współczynnik mocy (cos φ) i stosunek Q/P",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "AI Predykcja"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Licznik",
+        "multi": false,
+        "name": "device",
+        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "230",
+          "value": "230"
+        },
+        "hide": 0,
+        "label": "Napięcie znamionowe [V]",
+        "name": "u_nom",
+        "options": [
+          {
+            "selected": true,
+            "text": "230",
+            "value": "230"
+          }
+        ],
+        "query": "230",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "text": "10",
+          "value": "10"
+        },
+        "hide": 0,
+        "label": "Pasmo napięcia [± %] (orientacyjne)",
+        "name": "u_band_pct",
+        "options": [
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          }
+        ],
+        "query": "10",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "text": "50",
+          "value": "50"
+        },
+        "hide": 0,
+        "label": "Częstotliwość znamionowa [Hz]",
+        "name": "f_nom",
+        "options": [
+          {
+            "selected": true,
+            "text": "50",
+            "value": "50"
+          }
+        ],
+        "query": "50",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "text": "0.2",
+          "value": "0.2"
+        },
+        "hide": 0,
+        "label": "Pasmo częstotliwości [± Hz]",
+        "name": "f_band_hz",
+        "options": [
+          {
+            "selected": true,
+            "text": "0.2",
+            "value": "0.2"
+          }
+        ],
+        "query": "0.2",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "Europe/Warsaw",
+  "title": "Jakość energii",
+  "uid": "aip-jakosc",
+  "version": 1
+}

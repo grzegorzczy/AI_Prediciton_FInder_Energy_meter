@@ -1,0 +1,703 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.6)",
+        "name": "Okna testów i przerw",
+        "target": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT start_time AS time, end_time AS \"timeEnd\", kind AS tags, description AS text FROM data_windows WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time",
+          "refId": "Anno"
+        }
+      }
+    ]
+  },
+  "description": "Zużycie energii z całki mocy (suma mocy z obecnych próbek × okres próbkowania) z pokryciem, profil godzinowo-tygodniowy, porównania okresów, moc bazowa i kontrola zgodności z licznikiem wzorcowym. Luki nie są interpolowane: zużycie przy pokryciu poniżej 100% jest dolną granicą.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Przegląd",
+      "type": "link",
+      "url": "/d/aip-przeglad"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Licznik na żywo",
+      "type": "link",
+      "url": "/d/aip-na-zywo"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Jakość energii",
+      "type": "link",
+      "url": "/d/aip-jakosc"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Energia i profil",
+      "type": "link",
+      "url": "/d/aip-energia"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Stan i diagnostyka",
+      "type": "link",
+      "url": "/d/aip-diagnostyka"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia czynna [Wh] w każdej minucie (całka mocy) oraz pokrycie minuty pomiarem. Panel działa dla zakresów do 7 dni; dla dłuższych użyj paneli godzinowego i dobowego.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 25,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 3,
+          "unit": "watth"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pokrycie"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "max",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, active_power_sum * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS \"Energia [Wh]\", least(1.0, active_power_n * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 60.0) AS \"Pokrycie\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND ($__timeTo() - $__timeFrom()) <= interval '7 days' ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Zużycie na minutę",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia czynna [Wh] w każdej godzinie (agregat godzinny) oraz pokrycie godziny pomiarem. Bieżąca godzina ma pokrycie poniżej 1 z natury (jeszcze trwa).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 25,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 9000000
+          },
+          "decimals": 2,
+          "unit": "watth"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pokrycie"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "max",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, energy_integral_wh AS \"Energia [Wh]\", coverage AS \"Pokrycie\" FROM energy_1h_calc WHERE $__timeFilter(bucket) AND device_id = '$device' ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Zużycie na godzinę",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) i pokrycie doby pomiarem. Doba w toku ma pokrycie poniżej 1.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 25,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 200000000
+          },
+          "decimals": 1,
+          "unit": "watth"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pokrycie"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "max",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT day::timestamp AT TIME ZONE 'Europe/Warsaw' AS time, integral_wh AS \"Energia [Wh]\", coverage AS \"Pokrycie\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Zużycie na dobę",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Średnia moc czynna [W] dla każdej godziny doby (czas lokalny) i dnia tygodnia w wybranym zakresie czasu, z agregatu godzinnego. Kolor komórki rośnie ze średnią mocą; pusta komórka oznacza brak danych w tym zakresie.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "cellOptions": {
+              "mode": "gradient",
+              "type": "color-background"
+            }
+          },
+          "decimals": 1,
+          "unit": "watt"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Godzina"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "auto"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 4,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT hour AS \"Godzina\", avg(w) FILTER (WHERE dow = 1) AS \"Pon\", avg(w) FILTER (WHERE dow = 2) AS \"Wt\", avg(w) FILTER (WHERE dow = 3) AS \"Śr\", avg(w) FILTER (WHERE dow = 4) AS \"Czw\", avg(w) FILTER (WHERE dow = 5) AS \"Pt\", avg(w) FILTER (WHERE dow = 6) AS \"Sob\", avg(w) FILTER (WHERE dow = 7) AS \"Niedz\" FROM (SELECT extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS hour, extract(isodow FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS dow, active_power_sum / nullif(active_power_n, 0) AS w FROM energy_1h WHERE $__timeFilter(bucket) AND device_id = '$device') s GROUP BY hour ORDER BY hour",
+          "refId": "A"
+        }
+      ],
+      "title": "Profil: godzina × dzień tygodnia (średnia moc)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Średnia moc czynna [W] w wybranym zakresie czasu oraz ta sama wielkość sprzed 24 godzin (przesunięta na oś bieżącego zakresu).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 1,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket + interval '1 day', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Doba wcześniej\" FROM energy_1m WHERE bucket BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() - interval '1 day' AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Moc: bieżący zakres a poprzednia doba",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Średnia moc czynna [W] w wybranym zakresie czasu oraz ta sama wielkość sprzed 7 dni (przesunięta na oś bieżącego zakresu).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 1,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket + interval '7 days', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Tydzień wcześniej\" FROM energy_1m WHERE bucket BETWEEN $__timeFrom() - interval '7 days' AND $__timeTo() - interval '7 days' AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Moc: bieżący zakres a poprzedni tydzień",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc bazowa doby: 5. percentyl średniej minutowej mocy czynnej [W] w godzinach lokalnych 00:00–05:00 (obciążenie tła, gdy maszyny nie pracują). Jedna wartość na dobę lokalną.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 200000000
+          },
+          "decimals": 1,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT (bucket AT TIME ZONE 'Europe/Warsaw')::date::timestamp AT TIME ZONE 'Europe/Warsaw' AS time, percentile_cont(0.05) WITHIN GROUP (ORDER BY active_power_sum / active_power_n) AS \"Moc bazowa\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND active_power_n > 0 AND extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw') < 5 GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc bazowa (5. percentyl nocą)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Dla każdej doby lokalnej: energia z całki mocy, pokrycie, przyrost licznika wzorcowego i różnica. Licznik zmienia stan co 100 Wh, więc przy małym obciążeniu przyrost dobowy to 1–2 kroki: główną miarą zgodności jest „W granicach rozdzielczości”, a odchyłka procentowa jest podawana tylko przy przyroście co najmniej 5 kroków licznika.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": ""
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pokrycie"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie\", counter_delta_wh AS \"Przyrost licznika [Wh]\", integral_extrapolated_wh AS \"Całka uzupełniona do doby [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdzielczość [Wh]\", within_resolution AS \"W granicach rozdzielczości\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Doba zakończona\", gap_before_count AS \"Godziny po luce\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() ORDER BY day DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Kontrola całki mocy a licznik wzorcowy (doby)",
+      "type": "table"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "AI Predykcja"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Licznik",
+        "multi": false,
+        "name": "device",
+        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "Europe/Warsaw",
+  "title": "Energia i profil",
+  "uid": "aip-energia",
+  "version": 1
+}

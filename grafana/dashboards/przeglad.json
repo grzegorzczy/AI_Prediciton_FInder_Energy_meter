@@ -1,0 +1,909 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.6)",
+        "name": "Okna testów i przerw",
+        "target": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT start_time AS time, end_time AS \"timeEnd\", kind AS tags, description AS text FROM data_windows WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time",
+          "refId": "Anno"
+        }
+      }
+    ]
+  },
+  "description": "Strona startowa: stan, bieżąca moc i zużycie dziś i wczoraj. Wartości „dziś” liczone od północy czasu lokalnego (Europe/Warsaw), niezależnie od wybranego zakresu czasu.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Przegląd",
+      "type": "link",
+      "url": "/d/aip-przeglad"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Licznik na żywo",
+      "type": "link",
+      "url": "/d/aip-na-zywo"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Jakość energii",
+      "type": "link",
+      "url": "/d/aip-jakosc"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Energia i profil",
+      "type": "link",
+      "url": "/d/aip-energia"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Stan i diagnostyka",
+      "type": "link",
+      "url": "/d/aip-diagnostyka"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Stan licznika uwzględniający łącze z PLC (K3-U3): „Brak danych z PLC”, gdy link_status ≠ 0 albo ostatni wpis link_status jest starszy niż próg ze zmiennej „Dane uznane za stare po”; „Brak danych z licznika”, gdy ostatni meter_status jest starszy niż ten próg; w pozostałych przypadkach nazwa stanu z docs/status-codes.md.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Licznik działa"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Licznik: błąd komunikacji"
+                },
+                "10": {
+                  "color": "purple",
+                  "index": 3,
+                  "text": "Błąd konfiguracji: inny licznik niż w konfiguracji"
+                },
+                "100": {
+                  "color": "red",
+                  "index": 4,
+                  "text": "Brak danych z PLC"
+                },
+                "101": {
+                  "color": "orange",
+                  "index": 5,
+                  "text": "Brak danych z licznika"
+                },
+                "2": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "Licznik: brak danych (start PLC)"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH l AS (SELECT time, value FROM measurements WHERE device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND time > now() - interval '1 hour' ORDER BY time DESC LIMIT 1), m AS (SELECT time, value FROM measurements WHERE device_id = '$device' AND metric = 'meter_status' AND time > now() - interval '1 hour' ORDER BY time DESC LIMIT 1) SELECT now() AS time, CASE WHEN l.time IS NULL OR now() - l.time > make_interval(secs => $stale_s) OR l.value <> 0 THEN 100 WHEN m.time IS NULL OR now() - m.time > make_interval(secs => $stale_s) THEN 101 ELSE m.value END AS \"Stan licznika\" FROM (SELECT 1) x LEFT JOIN l ON true LEFT JOIN m ON true",
+          "refId": "A"
+        }
+      ],
+      "title": "Stan licznika",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Stan łącza z PLC (link_status). „Brak danych”: ostatni wpis starszy niż próg ze zmiennej „Dane uznane za stare po”.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "PLC działa"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "PLC offline"
+                },
+                "100": {
+                  "color": "text",
+                  "index": 4,
+                  "text": "Brak danych"
+                },
+                "2": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "PLC zatrzymany"
+                },
+                "3": {
+                  "color": "purple",
+                  "index": 3,
+                  "text": "Błąd konfiguracji: zła wersja mapy rejestrów"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH l AS (SELECT time, value FROM measurements WHERE device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND time > now() - interval '1 hour' ORDER BY time DESC LIMIT 1) SELECT now() AS time, CASE WHEN l.time IS NULL OR now() - l.time > make_interval(secs => $stale_s) THEN 100 ELSE l.value END AS \"Stan PLC\" FROM (SELECT 1) x LEFT JOIN l ON true",
+          "refId": "A"
+        }
+      ],
+      "title": "Stan PLC",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Ostatnia zmierzona moc czynna P [W] z ostatnich 10 minut (średnia moc pobierana z sieci).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT time, value AS \"Moc czynna\" FROM measurements WHERE device_id = '$device' AND metric = 'active_power' AND time > now() - interval '10 minutes' ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc czynna teraz",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Ile sekund minęło od ostatniego pomiaru tego licznika w bazie. Powyżej progu „Dane uznane za stare po” oznacza brak świeżych danych.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, extract(epoch FROM now() - max(time)) AS \"Wiek odczytu\" FROM measurements WHERE device_id = '$device' AND time > now() - interval '1 hour'",
+          "refId": "A"
+        }
+      ],
+      "title": "Wiek ostatniego odczytu",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia czynna z całki mocy od północy: suma mocy z obecnych próbek × okres próbkowania. Przy pokryciu poniżej 100% to dolna granica (luki nie są interpolowane). Pokrycie i szacunek pełnej doby w tabeli obok.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": "watth"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, integral_wh AS \"Energia\" FROM energy_daily_check WHERE device_id = '$device' AND day = (now() AT TIME ZONE 'Europe/Warsaw')::date",
+          "refId": "A"
+        }
+      ],
+      "title": "Zużycie dziś (z pomiarów)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Jak obok, dla poprzedniej doby (czas lokalny). Dolna granica przy pokryciu poniżej 100%.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": "watth"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, integral_wh AS \"Energia\" FROM energy_daily_check WHERE device_id = '$device' AND day = (now() AT TIME ZONE 'Europe/Warsaw')::date - 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Zużycie wczoraj (z pomiarów)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia z całki mocy (dolna granica), pokrycie doby pomiarem, szacunek pełnej doby (całka / pokrycie, tylko przy pokryciu ≥ 50%) oraz przyrost licznika wzorcowego (kwantyzacja 100 Wh, więc informacyjnie). Dla bieżącej doby pokrycie obejmuje też godziny, które jeszcze nie nastąpiły.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": ""
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pokrycie doby"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 8,
+        "y": 4
+      },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"Doba\", integral_wh AS \"Energia z pomiarów [Wh]\", coverage AS \"Pokrycie doby\", integral_extrapolated_wh AS \"Szacunek pełnej doby [Wh]\", counter_delta_wh AS \"Przyrost licznika [Wh]\", day_complete AS \"Doba zakończona\" FROM energy_daily_check WHERE device_id = '$device' AND day >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 1 ORDER BY day DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Zużycie dziś i wczoraj",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Minuta z największą mocą czynną od północy (czas lokalny) i jej wartość. Dokładność czasu: jedna minuta.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS \"Minuta\", active_power_max AS \"Moc maks. [W]\" FROM energy_1m WHERE device_id = '$device' AND bucket >= (date_trunc('day', now() AT TIME ZONE 'Europe/Warsaw') AT TIME ZONE 'Europe/Warsaw') AND active_power_max IS NOT NULL ORDER BY active_power_max DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc maksymalna dziś",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Współczynnik mocy PF liczony od północy jako suma / liczba próbek z agregatu minutowego.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\" FROM energy_1m WHERE device_id = '$device' AND bucket >= (date_trunc('day', now() AT TIME ZONE 'Europe/Warsaw') AT TIME ZONE 'Europe/Warsaw')",
+          "refId": "A"
+        }
+      ],
+      "title": "Średni cos φ dziś",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Jaka część czasu od północy (czas lokalny) ma pomiar mocy: liczba próbek × okres próbkowania / upłynięty czas. Luki (awarie, zaniki) obniżają wartość.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, least(1.0, sum(active_power_n) * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / extract(epoch FROM now() - (date_trunc('day', now() AT TIME ZONE 'Europe/Warsaw') AT TIME ZONE 'Europe/Warsaw'))) AS \"Pokrycie\" FROM energy_1m WHERE device_id = '$device' AND bucket >= (date_trunc('day', now() AT TIME ZONE 'Europe/Warsaw') AT TIME ZONE 'Europe/Warsaw')",
+          "refId": "A"
+        }
+      ],
+      "title": "Pokrycie danych od północy",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Liczba przejść meter_status z 0 na wartość ≠ 0 od północy (czas lokalny). Brak pokrycia z powodu awarii PLC nie jest błędem licznika.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, count(*) AS \"Epizody\" FROM (SELECT value, lag(value) OVER (ORDER BY time) AS prev FROM measurements WHERE device_id = '$device' AND metric = 'meter_status' AND time >= (date_trunc('day', now() AT TIME ZONE 'Europe/Warsaw') AT TIME ZONE 'Europe/Warsaw')) s WHERE value <> 0 AND prev = 0",
+          "refId": "A"
+        }
+      ],
+      "title": "Epizody błędu licznika dziś",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Moc czynna P [W] w wybranym zakresie czasu (średnia w kroku wykresu), z agregatu minutowego.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Moc czynna\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc czynna",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "AI Predykcja"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Licznik",
+        "multi": false,
+        "name": "device",
+        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "10",
+          "value": "10"
+        },
+        "hide": 0,
+        "label": "Dane uznane za stare po [s]",
+        "name": "stale_s",
+        "options": [
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          }
+        ],
+        "query": "10",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "Europe/Warsaw",
+  "title": "Przegląd",
+  "uid": "aip-przeglad",
+  "version": 1
+}

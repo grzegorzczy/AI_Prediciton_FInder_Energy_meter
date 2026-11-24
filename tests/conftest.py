@@ -25,7 +25,10 @@ def pg() -> dict:
 
 @pytest.fixture(scope="session")
 def role_passwords() -> dict:
-    return {"app_writer": secrets.token_hex(16), "app_reader": secrets.token_hex(16)}
+    # Hasło app_reader jest wspólne dla całego klastra testowego: korzysta z niego też Grafana (provisioning z env),
+    # więc każdy przebieg migrate musi ustawiać to samo hasło (run-tests.sh ustawia TEST_APP_READER_PASSWORD).
+    return {"app_writer": secrets.token_hex(16),
+            "app_reader": os.environ.get("TEST_APP_READER_PASSWORD") or secrets.token_hex(16)}
 
 
 @pytest.fixture

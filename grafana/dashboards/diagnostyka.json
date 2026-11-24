@@ -1,0 +1,638 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.6)",
+        "name": "Okna testów i przerw",
+        "target": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT start_time AS time, end_time AS \"timeEnd\", kind AS tags, description AS text FROM data_windows WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time",
+          "refId": "Anno"
+        }
+      }
+    ]
+  },
+  "description": "Stan łącza z PLC i licznika, kody błędów komunikacji, liczniki błędów, wiek danych i luki. Zmiany stanów są liczone dla zakresów do 7 dni. Brak pokrycia z powodu awarii PLC nie jest błędem licznika.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Przegląd",
+      "type": "link",
+      "url": "/d/aip-przeglad"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Licznik na żywo",
+      "type": "link",
+      "url": "/d/aip-na-zywo"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Jakość energii",
+      "type": "link",
+      "url": "/d/aip-jakosc"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Energia i profil",
+      "type": "link",
+      "url": "/d/aip-energia"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Stan i diagnostyka",
+      "type": "link",
+      "url": "/d/aip-diagnostyka"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Stan łącza collectora z PLC: kody i komunikaty z docs/status-codes.md. „Brak danych”: luka w danych dłuższa niż próg (collector zatrzymany, zanik zasilania).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "PLC działa"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "PLC offline"
+                },
+                "100": {
+                  "color": "text",
+                  "index": 4,
+                  "text": "Brak danych"
+                },
+                "2": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "PLC zatrzymany"
+                },
+                "3": {
+                  "color": "purple",
+                  "index": 3,
+                  "text": "Błąd konfiguracji: zła wersja mapy rejestrów"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.8,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND ($__timeTo() - $__timeFrom()) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Łącze z PLC\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Łącze z PLC (link_status)",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Stan licznika z PLC: kody i komunikaty z docs/status-codes.md. Przy link_status ≠ 0 licznik nie publikuje statusu (stąd „Brak danych”).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Licznik działa"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Licznik: błąd komunikacji"
+                },
+                "10": {
+                  "color": "purple",
+                  "index": 3,
+                  "text": "Błąd konfiguracji: inny licznik niż w konfiguracji"
+                },
+                "100": {
+                  "color": "text",
+                  "index": 4,
+                  "text": "Brak danych"
+                },
+                "2": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "Licznik: brak danych (start PLC)"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 2,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.8,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_status' AND ($__timeTo() - $__timeFrom()) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Stan licznika\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Stan licznika (meter_status)",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Kod błędu publikowany tylko przy meter_status ≠ 0: 161 RESPONSE_TIMEOUT, 162 RESPONSE_CRC_FAIL, 163 RESPONSE_WRONG_SLAVE (źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Pusty pasek: brak błędu.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "text",
+                  "index": 3,
+                  "text": "0 (brak kodu)"
+                },
+                "161": {
+                  "color": "blue",
+                  "index": 0,
+                  "text": "161 RESPONSE_TIMEOUT"
+                },
+                "162": {
+                  "color": "blue",
+                  "index": 1,
+                  "text": "162 RESPONSE_CRC_FAIL"
+                },
+                "163": {
+                  "color": "blue",
+                  "index": 2,
+                  "text": "163 RESPONSE_WRONG_SLAVE"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "id": 3,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.8,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT time, value AS \"Kod błędu\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_error_code' AND ($__timeTo() - $__timeFrom()) <= interval '7 days' ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Kod błędu komunikacji PLC–licznik (meter_error_code)",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Licznik błędów komunikacji PLC–licznik (16-bitowy, po 65535 wraca do 0; restart PLC go zeruje).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "decimals": 0,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), max(value) AS \"meter_error_count\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_error_count' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Licznik błędów komunikacji (meter_error_count)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Czas od ostatniej udanej odpowiedzi licznika [ms], maksimum w kroku wykresu. Przy NO_DATA (FFFFFFFF) wartość nie jest publikowana.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "decimals": 0,
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), max(value) AS \"Wiek danych\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_data_age_ms' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Wiek danych licznika (meter_data_age_ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Ile sekund w godzinie nie ma pomiaru mocy (3600 × (1 − pokrycie)). Godzina w toku (jasna seria) jest niepełna z natury; awaria PLC i zanik zasilania także dają sekundy bez pomiaru, ale nie są błędem licznika.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 25,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 9000000
+          },
+          "decimals": 0,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, CASE WHEN bucket_complete THEN 3600 * (1 - coverage) END AS \"Godzina zakończona\", CASE WHEN NOT bucket_complete THEN 3600 * (1 - coverage) END AS \"Godzina w toku\" FROM energy_1h_calc WHERE $__timeFilter(bucket) AND device_id = '$device' AND coverage IS NOT NULL ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Sekundy bez pomiaru mocy na godzinę",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 na sekundę (780 na minutę), przy meter_status ≠ 0 5 na sekundę, przy awarii PLC 1 na sekundę (model z docs/status-codes.md). Panel dla zakresów do 24 godzin.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 0,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket(interval '1 minute', time) AS time, count(*) AS \"Wiersze\" FROM measurements WHERE $__timeFilter(time) AND (device_id = '$device' OR device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1)) AND ($__timeTo() - $__timeFrom()) <= interval '24 hours' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Wiersze na minutę w bazie",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "AI Predykcja"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Licznik",
+        "multi": false,
+        "name": "device",
+        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "10",
+          "value": "10"
+        },
+        "hide": 0,
+        "label": "Dane uznane za stare po [s]",
+        "name": "stale_s",
+        "options": [
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          }
+        ],
+        "query": "10",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "Europe/Warsaw",
+  "title": "Stan i diagnostyka",
+  "uid": "aip-diagnostyka",
+  "version": 1
+}
