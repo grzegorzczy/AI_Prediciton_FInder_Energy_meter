@@ -26,8 +26,28 @@ def load_generator():
     return module
 
 
+def _api_via_docker(container: str, method: str, path: str, body, auth: bool, timeout: float):
+    """Transport przez `docker exec` (produkcja): hasło admina jest rozwijane przez powłokę KONTENERA ze zmiennych GF_SECURITY_*
+    i nigdy nie trafia do tego procesu, polecenia ani wyjścia."""
+    import subprocess
+
+    credentials = '-u "$GF_SECURITY_ADMIN_USER:$GF_SECURITY_ADMIN_PASSWORD" ' if auth else ""
+    command = (f'curl -s {credentials}-X {method} -H "Content-Type: application/json" --data-binary @- '
+               f'-w "\n%{{http_code}}" http://127.0.0.1:3000{path}')
+    done = subprocess.run(["docker", "exec", "-i", container, "sh", "-c", command],
+                          input=(json.dumps(body) if body is not None else ""), capture_output=True, text=True, timeout=timeout)
+    raw, _, code = done.stdout.rpartition("
+")
+    try:
+        return int(code), json.loads(raw)
+    except ValueError:
+        return int(code or 0), raw
+
+
 def api(method: str, path: str, body=None, auth: bool = True, timeout: float = 60.0):
     """(status, odpowiedź JSON lub tekst); statusy błędów nie rzucają wyjątku."""
+    if os.environ.get("GRAFANA_DOCKER_CONTAINER"):
+        return _api_via_docker(os.environ["GRAFANA_DOCKER_CONTAINER"], method, path, body, auth, timeout)
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(BASE + path, data=data, method=method)
     request.add_header("Content-Type", "application/json")
