@@ -56,9 +56,19 @@ def series(conn, metric: str, start, seconds: int, value_sql: str = "0", device:
 
 
 def refresh_all(conn) -> None:
-    """Pełne odświeżenie obu agregatów (poza transakcją: conn musi mieć autocommit)."""
-    conn.execute("CALL refresh_continuous_aggregate('energy_1m', NULL, NULL)")
-    conn.execute("CALL refresh_continuous_aggregate('energy_1h', NULL, NULL)")
+    """Pełne odświeżenie obu agregatów (poza transakcją: conn musi mieć autocommit). Zadanie polityki odświeżania w tle
+    może akurat trwać (LockNotAvailable: współbieżne odświeżenie): wtedy próbujemy ponownie."""
+    import time
+
+    for view in ("energy_1m", "energy_1h"):
+        for attempt in range(10):
+            try:
+                conn.execute(f"CALL refresh_continuous_aggregate('{view}', NULL, NULL)")
+                break
+            except psycopg.errors.LockNotAvailable:
+                if attempt == 9:
+                    raise
+                time.sleep(1)
 
 
 # --- rok danych syntetycznych do pomiarów wydajności (K6-U4, k7) -------------------------------------------------------
