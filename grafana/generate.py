@@ -327,7 +327,7 @@ def live() -> Dash:
                 [target(f"SELECT CASE metric WHEN 'voltage' THEN 'Napięcie U [V]' WHEN 'current' THEN 'Prąd I [A]' "
                         "WHEN 'active_power' THEN 'Moc czynna P [W]' WHEN 'reactive_power' THEN 'Moc bierna Q [var]' "
                         "WHEN 'apparent_power' THEN 'Moc pozorna S [VA]' WHEN 'power_factor' THEN 'PF' ELSE 'Częstotliwość f [Hz]' END AS \"Wielkość\", "
-                        "(array_agg(value ORDER BY time DESC))[1] AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", "
+                        "last(value, time) AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", "
                         "avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND "
                         f"{DEV} AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency') "
                         "GROUP BY metric ORDER BY 1", "table")], decimals=2), 24, 7, new_row=True)
