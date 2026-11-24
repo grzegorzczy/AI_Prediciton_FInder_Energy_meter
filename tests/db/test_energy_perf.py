@@ -76,6 +76,9 @@ def year(pg, request):
           f"baza {info['size']}; ładowanie {info['load_s']:.0f} s, pierwsze odświeżenie agregatów {info['refresh_s']:.0f} s")
     yield conn, info
     conn.close()
+    if os.environ.get("AIP_PERF_KEEP"):
+        print(f"[perf] baza {name} zostaje (AIP_PERF_KEEP)")
+        return
     with admin_connect(pg) as c:
         c.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
 

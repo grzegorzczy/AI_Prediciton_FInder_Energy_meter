@@ -11,7 +11,8 @@ export TEST_POSTGRES_PASSWORD TEST_MQTT_COLLECTOR_PASSWORD TEST_MQTT_INGEST_PASS
 
 COMPOSE="docker compose -p aip-test -f docker-compose.test.yml -f docker-compose.perf.yml"
 cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
-trap cleanup EXIT
+# AIP_PERF_KEEP=1: baza z rokiem danych zostaje do ręcznych eksperymentów (sprzątanie: docker compose -p aip-test ... down -v)
+[ -n "${AIP_PERF_KEEP:-}" ] || trap cleanup EXIT
 
 $COMPOSE build pytest
-$COMPOSE run --rm -T pytest pytest -c /repo/pytest.ini -s -m perf "$@"
+$COMPOSE run --rm -T -e AIP_PERF_KEEP="${AIP_PERF_KEEP:-}" pytest pytest -c /repo/pytest.ini -s -m perf "$@"
