@@ -16,7 +16,7 @@ os.environ.setdefault("GRAFANA_DOCKER_CONTAINER", "aip-grafana")
 os.environ.setdefault("REPO_DIR", str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from grafana_support import RANGES, dashboards, ds_query, expand_vars, targets  # noqa: E402
+from grafana_support import RANGES, dashboards, ds_query, effective_seconds, expand_vars, panel_targets  # noqa: E402
 
 
 def main(argv: list[str]) -> int:
@@ -29,9 +29,11 @@ def main(argv: list[str]) -> int:
             end = time.time()
             start = end - RANGES[range_name]
             rows_by_panel: dict[str, list] = {}
-            for title, target in targets(dash):
+            for panel, target in panel_targets(dash):
+                title = panel["title"]
                 sql = expand_vars(target["rawSql"], device)
-                result = ds_query(sql, target["format"], start, end, target["refId"])
+                # panel z własnym zakresem czasu (timeFrom) używa go zamiast zakresu pulpitu
+                result = ds_query(sql, target["format"], end - effective_seconds(panel, RANGES[range_name]), end, target["refId"])
                 total += 1
                 if result["error"]:
                     failures += 1
