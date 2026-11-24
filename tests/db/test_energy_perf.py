@@ -21,13 +21,31 @@ pytestmark = [
 LIMIT_S = 1.0
 DAYS = int(os.environ.get("AIP_PERF_DAYS", "365"))
 
+BOUNDED_DELTA = """
+WITH prev AS (
+    SELECT bucket, import_last FROM energy_1m
+    WHERE device_id = %(d)s AND bucket < now() - interval '{span}' AND bucket >= now() - interval '{span}' - interval '3 days'
+      AND import_last IS NOT NULL ORDER BY bucket DESC LIMIT 1),
+r AS (
+    SELECT bucket, import_first, import_last, active_power_n, active_power_sum FROM energy_1m
+    WHERE device_id = %(d)s AND bucket >= now() - interval '{span}'),
+u AS (
+    SELECT bucket, import_first, import_last, active_power_n, active_power_sum, false AS pre FROM r
+    UNION ALL SELECT bucket, import_last, import_last, NULL, NULL, true FROM prev),
+w AS (SELECT u.*, lag(import_last) OVER (ORDER BY bucket) AS prev_import_last FROM u WHERE import_last IS NOT NULL)
+SELECT bucket, active_power_sum / 60.0 / 60.0 AS energy_integral_wh, least(1.0, active_power_n * 60.0 / 60.0) AS coverage,
+       CASE WHEN prev_import_last IS NULL THEN import_last - import_first WHEN import_last < prev_import_last THEN import_last
+            ELSE import_last - prev_import_last END AS energy_import_delta_wh
+FROM w WHERE NOT pre ORDER BY bucket
+"""
+
+# Zapytania, których czas MUSI mieścić się w progu. Przyrost minutowy panele liczą LAG w zapytaniu z zapasem 3 dni (wynik K6-U4).
 QUERIES = {
-    "energy_1m_calc 24 h": (
-        "SELECT bucket, energy_integral_wh, coverage, energy_import_delta_wh FROM energy_1m_calc "
+    "minuty 24 h, LAG w zapytaniu z zapasem": BOUNDED_DELTA.format(span="24 hours"),
+    "minuty 7 dni, LAG w zapytaniu z zapasem": BOUNDED_DELTA.format(span="7 days"),
+    "energy_1m 24 h (całka bez przyrostu)": (
+        "SELECT bucket, active_power_sum / 60.0 / 60.0 AS energy_integral_wh, active_power_n FROM energy_1m "
         "WHERE device_id = %(d)s AND bucket >= now() - interval '24 hours' ORDER BY bucket"),
-    "energy_1m_calc 7 dni": (
-        "SELECT bucket, energy_integral_wh, coverage, energy_import_delta_wh FROM energy_1m_calc "
-        "WHERE device_id = %(d)s AND bucket >= now() - interval '7 days' ORDER BY bucket"),
     "energy_1h_calc 30 dni": (
         "SELECT bucket, energy_integral_wh, coverage, energy_import_delta_wh FROM energy_1h_calc "
         "WHERE device_id = %(d)s AND bucket >= now() - interval '30 days' ORDER BY bucket"),
@@ -37,6 +55,14 @@ QUERIES = {
     "energy_daily_check rok": "SELECT * FROM energy_daily_check WHERE device_id = %(d)s ORDER BY day",
     "energy_daily_check 30 dni": (
         "SELECT * FROM energy_daily_check WHERE device_id = %(d)s AND day >= current_date - 30 ORDER BY day"),
+}
+
+# Tylko informacyjnie (bez progu): widok minutowy liczy LAG nad całym agregatem, więc filtr po bucket go nie skraca.
+# Na roku danych ok. 17 s (a app_reader ma statement_timeout 10 s), dlatego panele go nie używają.
+INFORMATIONAL = {
+    "energy_1m_calc 24 h (widok, bez progu)": (
+        "SELECT bucket, energy_integral_wh, coverage, energy_import_delta_wh FROM energy_1m_calc "
+        "WHERE device_id = %(d)s AND bucket >= now() - interval '24 hours' ORDER BY bucket"),
 }
 
 
@@ -101,5 +127,9 @@ def test_calc_views_on_a_year_of_data_stay_under_a_second(year):
         cold, median, rows = timed(conn, query)
         results[name] = (cold, median, rows)
         print(f"[perf] {name}: {rows} wierszy, pierwszy przebieg {cold * 1000:.0f} ms, mediana {median * 1000:.0f} ms")
+    if os.environ.get("AIP_PERF_INFO"):
+        for name, query in INFORMATIONAL.items():
+            cold, median, rows = timed(conn, query, runs=1)
+            print(f"[perf] {name}: {rows} wierszy, {cold * 1000:.0f} ms")
     slow = {n: r[1] for n, r in results.items() if r[1] >= LIMIT_S}
     assert not slow, f"zapytania >= {LIMIT_S} s (mediana): {slow}"

@@ -1,0 +1,14 @@
+# Dashboardy jako kod: JSON w repo (grafana/dashboards/, generowane przez grafana/generate.py). Edycja w GUI do prób
+# jest dozwolona, ale nie jest źródłem prawdy: po restarcie wraca wersja z repo.
+apiVersion: 1
+providers:
+  - name: aip
+    orgId: 1
+    folder: AI Predykcja
+    type: file
+    disableDeletion: true
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false
