@@ -33,11 +33,10 @@ def _api_via_docker(container: str, method: str, path: str, body, auth: bool, ti
 
     credentials = '-u "$GF_SECURITY_ADMIN_USER:$GF_SECURITY_ADMIN_PASSWORD" ' if auth else ""
     command = (f'curl -s {credentials}-X {method} -H "Content-Type: application/json" --data-binary @- '
-               f'-w "\n%{{http_code}}" http://127.0.0.1:3000{path}')
+               f'-w "' + chr(92) + 'n%{http_code}" ' + f'http://127.0.0.1:3000{path}')
     done = subprocess.run(["docker", "exec", "-i", container, "sh", "-c", command],
                           input=(json.dumps(body) if body is not None else ""), capture_output=True, text=True, timeout=timeout)
-    raw, _, code = done.stdout.rpartition("
-")
+    raw, _, code = done.stdout.rpartition(chr(10))
     try:
         return int(code), json.loads(raw)
     except ValueError:
