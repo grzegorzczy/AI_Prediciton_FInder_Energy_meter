@@ -1,0 +1,32 @@
+# Pomiar K6-U4 (k7): rok danych syntetycznych w bazie testowej POZA tmpfs, z wiekszym limitem pamieci.
+# Uzycie: sh tests/run-perf.sh (laczy docker-compose.test.yml z tym plikiem; projekt aip-test, wolumen znika razem z projektem).
+# Nie dotyka stosu produkcyjnego ani smartWARE.
+services:
+  db:
+    tmpfs: !reset []
+    volumes:
+      - aip_perf_data:/var/lib/postgresql/data
+    command: !override
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=30
+      - -c
+      - max_worker_processes=16
+      - -c
+      - timescaledb.max_background_workers=8
+      - -c
+      - timezone=UTC
+      - -c
+      - timescaledb.telemetry_level=off
+      - -c
+      - fsync=off
+    mem_limit: 1g
+    memswap_limit: 1g
+  pytest:
+    environment:
+      AIP_PERF: "1"
+
+volumes:
+  aip_perf_data:
