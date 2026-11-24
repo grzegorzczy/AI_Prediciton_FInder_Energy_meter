@@ -156,3 +156,40 @@ def build_panel_data(conn) -> dict:
         _gen(conn, "finder_7m24_2", metric, unit, "now() - interval '2 days'", "date_trunc('second', now())", 60, expr)
     refresh_all(conn)
     return {"now": now, "dense_start": dense_start}
+
+
+def expand_grafana_macros(sql: str, start, end, max_points: int = 1000) -> str:
+    """Rozwija makra źródła PostgreSQL używane w dashboardach (do pomiarów bez Grafany): $__timeFilter, $__timeGroupAlias,
+    $__timeFrom, $__timeTo, $__interval. `start` i `end` to datetime z strefą."""
+    frm, to = f"'{start.isoformat()}'::timestamptz", f"'{end.isoformat()}'::timestamptz"
+    seconds = max(1, int((end - start).total_seconds() / max_points))
+
+    def split_args(text: str) -> list[str]:
+        depth, parts, current = 0, [], ""
+        for ch in text:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            if ch == "," and depth == 0:
+                parts.append(current)
+                current = ""
+            else:
+                current += ch
+        return parts + [current]
+
+    def replace_call(text: str, name: str, render) -> str:
+        marker = f"${name}("
+        while marker in text:
+            i = text.index(marker)
+            j, depth = i + len(marker), 1
+            while depth:
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+                j += 1
+            args = split_args(text[i + len(marker):j - 1])
+            text = text[:i] + render(args) + text[j:]
+        return text
+
+    sql = replace_call(sql, "__timeFilter", lambda a: f"{a[0]} BETWEEN {frm} AND {to}")
+    sql = replace_call(sql, "__timeGroupAlias", lambda a: f"time_bucket(INTERVAL '{seconds} seconds', {a[0]}) AS \"time\"")
+    return sql.replace("$__timeFrom()", frm).replace("$__timeTo()", to).replace("$__interval", f"'{seconds}s'")

@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from dbtools import METER, admin_connect, build_year, refresh_all, seed_devices
+from dbtools import (METER, PERF_METRICS, admin_connect, build_year, expand_grafana_macros, refresh_all, seed_devices)
 
 pytestmark = [
     pytest.mark.perf,
@@ -133,3 +133,75 @@ def test_calc_views_on_a_year_of_data_stay_under_a_second(year):
             print(f"[perf] {name}: {rows} wierszy, {cold * 1000:.0f} ms")
     slow = {n: r[1] for n, r in results.items() if r[1] >= LIMIT_S}
     assert not slow, f"zapytania >= {LIMIT_S} s (mediana): {slow}"
+
+
+# --- zapytania paneli Grafany na roku danych (k7): jakość i energia < 1 s, „na żywo” na dobie danych sekundowych ---------------
+
+DASH_SPECS = {                      # dashboard: zakresy [dni]
+    "jakosc": [1, 7, 30, 365],
+    "energia": [1, 7, 30, 365],
+    "przeglad": [1],
+    "diagnostyka": [1],
+}
+PANEL_LIMIT_S = 1.0
+
+
+def _dashboards():
+    import json
+    from pathlib import Path
+
+    directory = Path(os.environ.get("REPO_DIR", "/repo")) / "grafana" / "dashboards"
+    return {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(directory.glob("*.json"))}
+
+
+def _substitute(sql: str) -> str:
+    for name, value in {"u_nom": "230", "u_band_pct": "10", "f_nom": "50", "f_band_hz": "0.2", "stale_s": "10"}.items():
+        sql = sql.replace("$" + name, value)
+    return sql.replace("$device", METER)
+
+
+def _run_panels(conn, names_and_days):
+    from datetime import datetime, timedelta, timezone
+
+    end = datetime.now(timezone.utc)
+    slow, lines = {}, []
+    dashes = _dashboards()
+    for name, days_list in names_and_days.items():
+        for days in days_list:
+            start = end - (timedelta(days=days) if isinstance(days, int) else days)
+            for panel in dashes[name]["panels"]:
+                for target in panel.get("targets", []):
+                    sql = expand_grafana_macros(_substitute(target["rawSql"]), start, end)
+                    times = []
+                    for _ in range(2):
+                        t0 = time.perf_counter()
+                        rows = len(conn.execute(sql).fetchall())
+                        times.append(time.perf_counter() - t0)
+                    best = min(times)
+                    lines.append(f"[perf] {name} / {panel['title']} / {days}: {rows} wierszy, {best * 1000:.0f} ms")
+                    if best >= PANEL_LIMIT_S:
+                        slow[f"{name}/{panel['title']}/{days}"] = round(best, 2)
+    print(chr(10) + chr(10).join(lines))
+    return slow
+
+
+def test_panel_queries_on_a_year_stay_under_a_second(year):
+    conn, _ = year
+    slow = _run_panels(conn, DASH_SPECS)
+    assert not slow, f"zapytania paneli >= {PANEL_LIMIT_S} s na roku danych: {slow}"
+
+
+def test_live_panels_on_a_day_of_one_second_data_stay_under_a_second(year):
+    from datetime import timedelta
+
+    conn, _ = year
+    for metric, (expr, unit) in {k: v for k, v in PERF_METRICS.items()
+                                 if k in ("active_power", "reactive_power", "apparent_power", "voltage", "current",
+                                          "power_factor", "frequency")}.items():
+        conn.execute(
+            "INSERT INTO measurements (time, device_id, metric, value, unit, source) "
+            f"SELECT t, %s, %s, ({expr.replace('g / ', 'extract(epoch FROM t) / ')})::float8, %s, 'real' "
+            "FROM generate_series(now() - interval '24 hours' + interval '500 milliseconds', now(), interval '1 second') AS t "
+            "ON CONFLICT DO NOTHING", (METER, metric, unit))
+    slow = _run_panels(conn, {"na-zywo": [timedelta(minutes=15), timedelta(hours=6), timedelta(hours=24)]})
+    assert not slow, f"panele „na żywo” >= {PANEL_LIMIT_S} s na dobie danych sekundowych: {slow}"
