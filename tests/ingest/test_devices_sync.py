@@ -26,7 +26,8 @@ def test_sync_creates_plc_and_meter(pg, migrated_db, writer_store, config):
     assert meta == {"map_version": 1}
     _, _, _, kind, source, enabled, meta = rows["finder_7m24_1"]
     assert (kind, source, enabled) == ("energy_meter", "real", True)
-    assert meta == {"profile": "finder_7m24", "block_base": 10, "serial": "F0183363"}
+    assert meta == {"profile": "finder_7m24", "block_base": 10, "serial": "F0183363",
+                    "poll_interval_s": 1.0, "energy_resolution_wh": 100.0}
 
 
 def test_ip_address_is_not_stored(pg, migrated_db, writer_store, config):

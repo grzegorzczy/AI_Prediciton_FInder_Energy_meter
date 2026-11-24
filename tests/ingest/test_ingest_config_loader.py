@@ -15,7 +15,8 @@ def test_real_config_loads_with_plc_and_meter():
     plc, meter = config.devices["plc-01"], config.devices["finder_7m24_1"]
     assert (plc.kind, plc.source) == ("plc", "real")
     assert (meter.kind, meter.source) == ("energy_meter", "real")
-    assert meter.meta == {"profile": "finder_7m24", "block_base": 10, "serial": "F0183363"}
+    assert meter.meta == {"profile": "finder_7m24", "block_base": 10, "serial": "F0183363",
+                          "poll_interval_s": 1.0, "energy_resolution_wh": 100.0}
     assert plc.meta == {"map_version": 1}
 
 
@@ -57,3 +58,29 @@ def test_invalid_configuration_is_rejected(make_config, mutate, fragment):
 def test_missing_file_is_a_config_error(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "nie-ma.yaml")
+
+
+def test_meter_meta_has_no_sampling_values_when_config_lacks_them():
+    """K6-d: brak poll_interval_s lub resolution_wh = brak klucza w meta (widoki dadzą NULL, nie domysł)."""
+    import copy
+    import yaml
+    from ingest.config import load_config_dict
+
+    raw = yaml.safe_load(open(REPO / "config" / "devices.yaml", encoding="utf-8"))
+    raw = copy.deepcopy(raw)
+    raw["plc"].pop("poll_interval_s")
+    for item in raw["profiles"]["finder_7m24"]["energy"].values():
+        item.pop("resolution_wh", None)
+    meta = load_config_dict(raw).devices["finder_7m24_1"].meta
+    assert "poll_interval_s" not in meta and "energy_resolution_wh" not in meta
+
+
+def test_conflicting_resolutions_in_one_profile_are_rejected():
+    import copy
+    import yaml
+    from ingest.config import ConfigError, load_config_dict
+
+    raw = copy.deepcopy(yaml.safe_load(open(REPO / "config" / "devices.yaml", encoding="utf-8")))
+    raw["profiles"]["finder_7m24"]["energy"]["energy_export_wh"]["resolution_wh"] = 10
+    with pytest.raises(ConfigError, match="resolution_wh"):
+        load_config_dict(raw)

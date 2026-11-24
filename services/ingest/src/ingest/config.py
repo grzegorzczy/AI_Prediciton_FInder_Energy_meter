@@ -43,6 +43,17 @@ def _need(mapping: Any, key: str, where: str) -> Any:
     return mapping[key]
 
 
+def _energy_resolution(profile: Any, where: str) -> float | None:
+    """Rozdzielczość liczników energii profilu (Wh); wszystkie liczniki profilu muszą ją podawać identycznie albo wcale."""
+    if not isinstance(profile, dict):
+        return None
+    values = {float(item["resolution_wh"]) for item in (profile.get("energy") or {}).values()
+              if isinstance(item, dict) and "resolution_wh" in item}
+    if len(values) > 1:
+        raise ConfigError(f"{where}: różne resolution_wh dla liczników energii: {sorted(values)}")
+    return values.pop() if values else None
+
+
 def load_config_dict(raw: dict) -> IngestConfig:
     site = str(_need(raw, "site", "główna"))
     line = str(_need(raw, "line", "główna"))
@@ -69,14 +80,24 @@ def load_config_dict(raw: dict) -> IngestConfig:
         device_id=plc_id, name=str(plc.get("name", plc_id)), kind="plc", source=str(plc.get("source", "real")),
         meta={"map_version": int(_need(plc, "map_version", "plc"))},        # bez adresu IP
     ))
+    poll_interval = plc.get("poll_interval_s")
+    profiles = raw.get("profiles") or {}
     for dev in _need(raw, "devices", "główna"):
         dev_id = str(_need(dev, "id", "devices"))
+        profile_name = str(_need(dev, "profile", f"devices.{dev_id}"))
+        meta = {"profile": profile_name,
+                "block_base": int(_need(dev, "block_base", f"devices.{dev_id}")),
+                "serial": str(_need(dev, "serial", f"devices.{dev_id}"))}
+        # K6-d: okres próbkowania i rozdzielczość licznika dla widoków energii (reguła 3: nie jako stałe w SQL).
+        # Brak wartości = brak klucza w meta (widoki dają NULL, nie domysł).
+        if poll_interval is not None:
+            meta["poll_interval_s"] = float(poll_interval)
+        resolution = _energy_resolution(profiles.get(profile_name), f"profiles.{profile_name}")
+        if resolution is not None:
+            meta["energy_resolution_wh"] = resolution
         add(DeviceSpec(
             device_id=dev_id, name=str(dev.get("name", dev_id)), kind=str(_need(dev, "kind", f"devices.{dev_id}")),
-            source=str(_need(dev, "source", f"devices.{dev_id}")),
-            meta={"profile": str(_need(dev, "profile", f"devices.{dev_id}")),
-                  "block_base": int(_need(dev, "block_base", f"devices.{dev_id}")),
-                  "serial": str(_need(dev, "serial", f"devices.{dev_id}"))},
+            source=str(_need(dev, "source", f"devices.{dev_id}")), meta=meta,
         ))
     return IngestConfig(site=site, line=line, devices=devices)
 
