@@ -27,11 +27,15 @@ services:
       - timescaledb.telemetry_level=off
       - -c
       - fsync=off
+      - -c
+      - max_wal_size=192MB        # WAL też leży w tmpfs (pamięć): bez limitu duże wstawienia danych (k7) wyczerpują limit kontenera
+      - -c
+      - min_wal_size=32MB
     tmpfs:
       - /var/lib/postgresql/data
     shm_size: 128m
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 896m
+    memswap_limit: 896m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d energy"]
       interval: 3s
