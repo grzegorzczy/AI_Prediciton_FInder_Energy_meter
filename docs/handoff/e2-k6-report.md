@@ -25,7 +25,7 @@ W trakcie pracy znalazłem i naprawiłem **błąd w widokach** (niżej, odstęps
 | `408222b` | poprawka `coverage` bez okresu próbkowania (NULL zamiast 1,0), poprawki testów |
 | `e6aedeb` | dokumenty: `status-codes.md`, `data-model.md`, `docs/ops` |
 
-Raport w osobnym commicie po tym raporcie. Hash wdrożony na komputerze: patrz „Wdrożenie”.
+Raport w osobnym commicie po tym raporcie. Stan komputera po przeglądzie: `b16dbc0` (obraz kontenerów zbudowany z identycznej zawartości plików, patrz odstępstwo 5).
 
 ## Wyniki względem kryteriów zaliczenia
 
@@ -98,7 +98,7 @@ Zgodność całki z licznikiem na prawdziwych danych będzie oceniana dopiero po
 2. **Błąd znaleziony przez testy na komputerze: `LEAST(1, NULL)` zwraca 1,** więc brak `poll_interval_s` w `meta` dawał `coverage` = 1,0 zamiast NULL (a widok dobowy tak samo). Naprawione w migracji 003 **przed** zastosowaniem na produkcji (`CASE WHEN ... IS NOT NULL`), dodane testy (`test_missing_meta_gives_null_not_a_default`, `test_daily_check_without_sampling_interval_has_null_coverage`). Obowiązuje zasada K6-d „NULL, nie domysł”.
 3. **Przyrost licznika względem poprzedniego wiaderka z odczytem licznika**, a nie po prostu poprzedniego wiaderka (doprecyzowanie planu): minuty, w których licznik jest w błędzie i nie publikuje energii, nie mogą zerować przyrostu następnego wiaderka. Stąd `gap_before` mierzy odstęp od poprzedniego wiaderka z energią.
 4. **Test dnia ze zmianą czasu 29.03.2026** wymaga wyłączenia retencji surowych danych w bazie testowej (to dane sprzed ponad 90 dni, zadanie retencji je kasowało); w teście wywołuję `remove_retention_policy` na `measurements` (tylko w bazie testowej).
-5. **Pliki na komputerze:** poprawioną migrację 003 i testy skopiowałem na komputer przez `ssh` (przed wdrożeniem), a nie przez `git pull`, żeby nie wypychać każdej poprawki osobno. Zawartość odpowiada commitom wyżej; po wypchnięciu przywracam czyste drzewo (`git checkout -- .` i `git pull --ff-only`) i sprawdzam, że `git status` jest czysty. Do tego czasu `git status` na komputerze pokazuje zmodyfikowane pliki.
+5. **Pliki na komputerze:** poprawioną migrację 003 i testy skopiowałem na komputer przez `ssh` (przed wdrożeniem), a nie przez `git pull`, żeby nie wypychać każdej poprawki osobno. Po wypchnięciu przywróciłem czyste drzewo (`git checkout -- .`, `git pull --ff-only`, kontrola praw): komputer jest na `b16dbc0`, `git status` czysty, `.env` 600. Suma kontrolna migracji 003 w `schema_migrations` (`0c88851…`) jest równa sumie pliku z repozytorium, czyli na produkcji działa dokładnie zatwierdzona wersja. Na komputerze ustawiłem `core.fileMode false` w lokalnej konfiguracji klonu (zmiany bitu wykonania po `chmod` nie psują `git status`).
 6. **Obserwacja bez epizodów licznika** (patrz wyżej): ścieżka `meter_error_code` nie jest sprawdzona na prawdziwych danych.
 
 ## Uwagi K6-U1…U5
