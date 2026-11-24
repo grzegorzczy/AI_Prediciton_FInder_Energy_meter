@@ -155,7 +155,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT bucket AS time, active_power_sum * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS \"Energia [Wh]\", least(1.0, active_power_n * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 60.0) AS \"Pokrycie\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND ($__timeTo() - $__timeFrom()) <= interval '7 days' ORDER BY 1",
+          "rawSql": "SELECT bucket AS time, active_power_sum * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS \"Energia [Wh]\", least(1.0, active_power_n * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 60.0) AS \"Pokrycie\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -321,7 +321,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT day::timestamp AT TIME ZONE 'Europe/Warsaw' AS time, integral_wh AS \"Energia [Wh]\", coverage AS \"Pokrycie\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() ORDER BY 1",
+          "rawSql": "SELECT day::timestamp AT TIME ZONE 'Europe/Warsaw' AS time, integral_wh AS \"Energia [Wh]\", coverage AS \"Pokrycie\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -464,7 +464,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(bucket + interval '1 day', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Doba wcześniej\" FROM energy_1m WHERE bucket BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() - interval '1 day' AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(bucket + interval '1 day', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Doba wcześniej\" FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo()::timestamptz - interval '1 day' AND device_id = '$device' GROUP BY 1 ORDER BY 1",
           "refId": "B"
         }
       ],
@@ -534,7 +534,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(bucket + interval '7 days', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Tydzień wcześniej\" FROM energy_1m WHERE bucket BETWEEN $__timeFrom() - interval '7 days' AND $__timeTo() - interval '7 days' AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(bucket + interval '7 days', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Tydzień wcześniej\" FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '7 days' AND $__timeTo()::timestamptz - interval '7 days' AND device_id = '$device' GROUP BY 1 ORDER BY 1",
           "refId": "B"
         }
       ],
@@ -649,7 +649,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT day AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie\", counter_delta_wh AS \"Przyrost licznika [Wh]\", integral_extrapolated_wh AS \"Całka uzupełniona do doby [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdzielczość [Wh]\", within_resolution AS \"W granicach rozdzielczości\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Doba zakończona\", gap_before_count AS \"Godziny po luce\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() ORDER BY day DESC",
+          "rawSql": "SELECT day AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie\", counter_delta_wh AS \"Przyrost licznika [Wh]\", integral_extrapolated_wh AS \"Całka uzupełniona do doby [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdzielczość [Wh]\", within_resolution AS \"W granicach rozdzielczości\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Doba zakończona\", gap_before_count AS \"Godziny po luce\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY day DESC",
           "refId": "A"
         }
       ],

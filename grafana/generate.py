@@ -29,7 +29,7 @@ PLC = "(SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMI
 DEV = "device_id = '$device'"
 POLL = "(SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device')"
 STALE = "make_interval(secs => $stale_s)"
-SPAN_GUARD_7D = "($__timeTo() - $__timeFrom()) <= interval '7 days'"
+SPAN_GUARD_7D = "($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days'"
 NO_DATA_CODE = 100          # sztuczny stan "brak danych" (luka w danych lub dane starsze niż $stale_s)
 NO_METER_CODE = 101         # PLC działa, ale licznik nie ma świeżego statusu
 
@@ -421,7 +421,7 @@ def energy() -> Dash:
     d.add(timeseries("Zużycie na dobę",
                      "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) i pokrycie doby pomiarem. Doba w toku ma pokrycie poniżej 1.",
                      [target(f"SELECT day::timestamp AT TIME ZONE '{TZ}' AS time, integral_wh AS \"Energia [Wh]\", coverage AS \"Pokrycie\" "
-                             f"FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() ORDER BY 1")],
+                             f"FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY 1")],
                      unit="watth", bars=True, span_ms=200000000, decimals=1,
                      overrides=[{"matcher": {"id": "byName", "options": "Pokrycie"},
                                  "properties": [{"id": "unit", "value": "percentunit"}, {"id": "custom.axisPlacement", "value": "right"},
@@ -443,7 +443,7 @@ def energy() -> Dash:
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" "
                              f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1"),
                       target(f"SELECT $__timeGroupAlias(bucket + interval '1 day', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Doba wcześniej\" "
-                             f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() - interval '1 day' AND {DEV} GROUP BY 1 ORDER BY 1",
+                             f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo()::timestamptz - interval '1 day' AND {DEV} GROUP BY 1 ORDER BY 1",
                              ref="B")],
                      unit="watt", span_ms=150000, decimals=1), 12, 8, new_row=True)
     d.add(timeseries("Moc: bieżący zakres a poprzedni tydzień",
@@ -451,7 +451,7 @@ def energy() -> Dash:
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" "
                              f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1"),
                       target(f"SELECT $__timeGroupAlias(bucket + interval '7 days', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Tydzień wcześniej\" "
-                             f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom() - interval '7 days' AND $__timeTo() - interval '7 days' AND {DEV} GROUP BY 1 ORDER BY 1",
+                             f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '7 days' AND $__timeTo()::timestamptz - interval '7 days' AND {DEV} GROUP BY 1 ORDER BY 1",
                              ref="B")],
                      unit="watt", span_ms=150000, decimals=1), 12, 8)
     d.add(timeseries("Moc bazowa (5. percentyl nocą)",
@@ -470,7 +470,7 @@ def energy() -> Dash:
                         "integral_extrapolated_wh AS \"Całka uzupełniona do doby [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdzielczość [Wh]\", "
                         "within_resolution AS \"W granicach rozdzielczości\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Doba zakończona\", "
                         f"gap_before_count AS \"Godziny po luce\" FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' "
-                        "BETWEEN $__timeFrom() - interval '1 day' AND $__timeTo() ORDER BY day DESC", "table")], decimals=1,
+                        "BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY day DESC", "table")], decimals=1,
                 overrides=[{"matcher": {"id": "byName", "options": "Pokrycie"}, "properties": [{"id": "unit", "value": "percentunit"}]}]),
           24, 8, new_row=True)
     return d
@@ -521,7 +521,7 @@ def diagnostics() -> Dash:
                      "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 na sekundę (780 na minutę), przy meter_status ≠ 0 5 na sekundę, "
                      "przy awarii PLC 1 na sekundę (model z docs/status-codes.md). Panel dla zakresów do 24 godzin.",
                      [target(f"SELECT time_bucket(interval '1 minute', time) AS time, count(*) AS \"Wiersze\" FROM measurements WHERE $__timeFilter(time) "
-                             f"AND (device_id = '$device' OR device_id = {PLC}) AND ($__timeTo() - $__timeFrom()) <= interval '24 hours' GROUP BY 1 ORDER BY 1")],
+                             f"AND (device_id = '$device' OR device_id = {PLC}) AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '24 hours' GROUP BY 1 ORDER BY 1")],
                      span_ms=150000, decimals=0), 12, 7)
     return d
 
