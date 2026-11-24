@@ -18,8 +18,7 @@ def test_dashboards_are_provisioned_into_the_folder(grafana_data):
 def test_home_dashboard_is_the_overview(grafana_data):
     status, home = api("GET", "/api/dashboards/home")
     assert status == 200
-    # strona startowa: przegląd (ustawiona zmienną środowiska produkcji) albo odesłanie do niego
-    assert home.get("dashboard", {}).get("title") == "Przegląd" or "przeglad" in str(home.get("redirectUri", "")) or home
+    assert home["dashboard"]["uid"] == "aip-przeglad" and home["dashboard"]["title"] == "Przegląd"
 
 
 def test_datasource_is_app_reader_with_a_small_pool(grafana_data):

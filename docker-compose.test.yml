@@ -66,6 +66,7 @@ services:
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
       GF_DATE_FORMATS_DEFAULT_TIMEZONE: Europe/Warsaw
       GF_USERS_DEFAULT_LANGUAGE: pl-PL
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/przeglad.json
       AIP_DB_NAME: energy
       AIP_DB_READER_PASSWORD: ${TEST_APP_READER_PASSWORD:?uzyj tests/run-tests.sh}
     volumes:
