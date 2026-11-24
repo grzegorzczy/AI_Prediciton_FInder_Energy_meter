@@ -14,7 +14,8 @@ to polskie tłumaczenie dla Grafany (krok k7).
 | 3 | `MAP_VERSION_MISMATCH` | rejestr `map_version` inny niż oczekiwany w `devices.yaml` | Błąd konfiguracji: zła wersja mapy rejestrów |
 
 Przy `link_status` ≠ 0 collector nie publikuje żadnych pomiarów ani `meter_status` (rejestry licznika są wtedy nieważne
-lub zamrożone). Stan jest publikowany w **każdym cyklu** (co 1 s), więc „ostatnia wartość” jest zawsze świeża.
+lub zamrożone). Stan jest publikowany w **każdym cyklu** (co 1 s) także podczas awarii, w której odczyt się zawiesza (odczyt PLC działa w tle),
+więc „ostatnia wartość” jest zawsze świeża. Wyjątek: cykle rozgrzewki (niżej) i wolna odpowiedź krótsza niż `timeout_s`.
 
 ## `meter_status` (urządzenie licznika, np. `finder_7m24_1`): stan licznika
 
@@ -33,6 +34,36 @@ pomiary nie są wtedy publikowane. Pomyłka w jednym liczniku (kod 10) nie bloku
 Status licznika jest oceniany **przed** numerem seryjnym: przy `NO_DATA` rejestry numeru seryjnego są puste, więc odwrotna
 kolejność zgłaszałaby fałszywy kod 10.
 
+## `meter_error_code` (urządzenie licznika): kod błędu komunikacji PLC-licznik
+
+Kod z rejestru `error_code` bloku licznika (offset 1; opis w `docs/modbus-map.md`). Collector go **interpretuje tylko wtedy,
+gdy `meter_status` ≠ 0**: publikuje wtedy metrykę `meter_error_code` (liczba, jednostka pusta) i zapisuje w logu kod
+z nazwą, **raz przy każdej zmianie kodu**. Przy `meter_status` = 0 kod jest nieważny (PLC może trzymać stary), więc nie jest
+ani publikowany, ani logowany. Przy `SERIAL_MISMATCH` (status 0) kodu też nie ma.
+
+Nazwy znanych kodów pochodzą z dokumentacji CODESYS `MB_ErrorCodes` (biblioteka IoDrvModbus, helpme-codesys.com);
+źródło zweryfikowane przez architekta 24.11.2026. Kod spoza tablicy jest podawany tylko liczbowo (dziesiętnie i szesnastkowo).
+
+| Kod | Szesnastkowo | Nazwa | Znaczenie |
+| --- | --- | --- | --- |
+| 161 | `0xA1` | `RESPONSE_TIMEOUT` | licznik nie odpowiedział w czasie |
+| 162 | `0xA2` | `RESPONSE_CRC_FAIL` | odpowiedź z błędną sumą CRC |
+| 163 | `0xA3` | `RESPONSE_WRONG_SLAVE` | odpowiedź od innego adresu niż zapytany |
+
+Przykład wpisu w logu collectora: `meter:finder_7m24_1: OK -> COMM_ERROR (error_code=162, 0xA2, RESPONSE_CRC_FAIL)`.
+Test `tests/collector/test_status_doc.py` sprawdza, że ta tabela zgadza się z `ERROR_CODE_NAMES` w kodzie.
+
+## Liczba wierszy na sekundę (model do planowania pojemności)
+
+| Stan | Wiersze na sekundę | Skład |
+| --- | --- | --- |
+| Wszystko sprawne | **13** | `link_status` + 12 wierszy licznika (`meter_status`, `meter_error_count`, `meter_data_age_ms`, 7 pomiarów, 2 liczniki energii) |
+| `meter_status` ≠ 0 | **5** | `link_status` + `meter_status`, `meter_error_count`, `meter_data_age_ms` (jeśli ≠ `FFFFFFFF`), `meter_error_code` |
+| PLC niedostępny (`link_status` ≠ 0) | **1** | tylko `link_status` |
+
+Przy `meter_data_age_ms` = `FFFFFFFF` (`NO_DATA`) wierszy jest o jeden mniej. Przy ok. 7 W obciążenia i 13 wierszach na sekundę
+dzienny przyrost to ok. 1,1 mln wierszy; zmierzone rozmiary są w `docs/data-model.md`.
+
 ## Zachowanie w czasie (do dokumentacji i do interpretacji wykresów)
 
 | Zdarzenie | Czas | Skutek na wykresach |
@@ -41,7 +72,8 @@ kolejność zgłaszałaby fałszywy kod 10.
 | Przerwa RS485 (odłączony przewód) | od pierwszego błędu | `meter_status` = 1, `meter_data_age_ms` rośnie, `meter_error_count` +1 na przerwę |
 | Koniec przerwy RS485 | PLC wraca do statusu 0 dopiero po **3 s** bez błędu (filtr w PLC) | pomiarów brak jeszcze ok. 3 s po podłączeniu przewodu |
 | Połączenie collectora z PLC (start lub powrót po awarii) | ok. 1 s (collector czeka na pierwszą zmianę heartbeatu) | pierwsze pomiary z opóźnieniem ok. 1 s; chroni przed zapisaniem zamrożonych rejestrów zatrzymanego PLC |
-| PLC wyłączony lub odłączony od sieci | wykrycie w czasie krótszym niż `timeout_s` + 1 s | `link_status` = 1 w każdym cyklu, bez pomiarów |
+| PLC wyłączony lub odłączony od sieci (także „czarna dziura”: połączenie TCP, które nie odpowiada) | wykrycie po `timeout_s` (2 s) + najwyżej jeden okres | `link_status` = 1 w każdym cyklu, bez pomiarów; odczyt w tle jest porzucany po 3 x `timeout_s`, a po powrocie PLC collector wraca do OK bez restartu |
+| Pojedyncza wolna odpowiedź sprawnego PLC (dłuższa niż okres, krótsza niż `timeout_s`) | do `timeout_s` | cykl bez publikacji, bez `link_status` = 1 i bez rozgrzewki |
 | PLC zatrzymany, ale serwer Modbus nadal odpowiada | 5 s bez zmiany heartbeatu | `link_status` = 2 |
 
 W cyklu rozgrzewki (ok. 1 s po połączeniu collectora z PLC, do pierwszej zmiany heartbeatu) collector nie publikuje niczego,

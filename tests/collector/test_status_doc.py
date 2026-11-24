@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from collector.status import LinkStatus, MeterStatus
+from collector.status import ERROR_CODE_NAMES, LinkStatus, MeterStatus
 from dbtools import REPO
 
 ROW = re.compile(r"^\|\s*(\d+)\s*\|\s*`(\w+)`\s*\|")
@@ -34,3 +34,21 @@ def test_document_describes_timing_behaviour():
     text = (REPO / "docs" / "status-codes.md").read_text(encoding="utf-8")
     for fragment in ("ok. 10 s", "3 s", "ok. 1 s", "NO_DATA"):
         assert fragment in text
+
+
+def test_error_code_table_matches_the_document():
+    text = (REPO / "docs" / "status-codes.md").read_text(encoding="utf-8")
+    start = text.index("## `meter_error_code`")
+    block = text[start:text.index("\n## ", start + 1)]
+    row = re.compile(r"^\|\s*(\d+)\s*\|\s*`0x([0-9A-F]+)`\s*\|\s*`(\w+)`\s*\|")
+    rows = [m.groups() for line in block.splitlines() if (m := row.match(line))]
+    assert {int(code): name for code, _, name in rows} == ERROR_CODE_NAMES
+    assert all(int(code) == int(hexa, 16) for code, hexa, _ in rows)
+    assert "MB_ErrorCodes" in block and "helpme-codesys.com" in block      # cytowane źródło nazw
+
+
+def test_document_states_the_row_model():
+    text = (REPO / "docs" / "status-codes.md").read_text(encoding="utf-8")
+    section = text[text.index("## Liczba wierszy na sekundę"):]
+    for fragment in ("**13**", "**5**", "**1**"):
+        assert fragment in section

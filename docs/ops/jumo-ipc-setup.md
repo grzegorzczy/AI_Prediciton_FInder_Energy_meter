@@ -250,6 +250,29 @@ baza nie ma portu na hoście. Testy integracyjne: `sh tests/run-tests.sh </dev/n
 W skryptach `bash -s` przekazywanych przez `ssh` dodawaj `</dev/null` do `docker compose run/exec`:
 inaczej polecenie czyta resztę skryptu ze standardowego wejścia i przerywa wykonanie.
 
+## Agregaty energii: odświeżanie i kontrola (od k6)
+
+Agregaty `energy_1m` i `energy_1h` odświeżają się same (okna: `energy_1m` 7 dni co minutę, `energy_1h` 30 dni co 15 minut).
+Migracja `002` robi pierwsze zmaterializowanie istniejących danych. **Dane starsze niż okno odświeżania polityka nie obejmie**:
+po wypełnieniu historii (etap 3) albo po ręcznym wstawieniu starych pomiarów trzeba odświeżyć agregaty ręcznie, najpierw minutowy:
+
+```sql
+CALL refresh_continuous_aggregate('energy_1m', NULL, NULL);
+CALL refresh_continuous_aggregate('energy_1h', NULL, NULL);
+```
+
+Polecenia wykonuje superużytkownik bazy (poza transakcją), np. przez `docker exec -i aip-timescaledb psql` z zalogowaniem z kontenera;
+roli `app_writer` i `app_reader` nie wolno zmieniać agregatów. Kontrola stanu:
+
+```sql
+SELECT view_name, materialized_only, compression_enabled FROM timescaledb_information.continuous_aggregates;
+SELECT proc_name, hypertable_name, schedule_interval, config FROM timescaledb_information.jobs WHERE proc_name LIKE 'policy_%';
+SELECT * FROM energy_daily_check ORDER BY day DESC LIMIT 7;
+```
+
+Przerwana migracja `002` (np. restart w trakcie) nic nie psuje: runner zapisuje sumę kontrolną dopiero po ostatniej instrukcji,
+a wszystkie instrukcje są idempotentne, więc kolejne `docker compose up -d` wykona plik od początku.
+
 ## Utrata danych przy przerwach (bufory)
 
 Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje przy przerwie i co traci się przy długiej:

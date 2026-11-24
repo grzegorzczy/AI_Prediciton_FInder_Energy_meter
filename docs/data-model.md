@@ -50,15 +50,64 @@ Temat `zaklad/linia/urzadzenie/metryka` → `device_id` = `urzadzenie`,
 - Klucz unikalny: `(device_id, metric, time)` – chroni przed duplikatami po ponowieniu.
 - Hypertable po `time`, kawałki 1 dzień.
 - Kompresja po 1 dniu, `segmentby = device_id, metric`.
-- Retencja 90 dni (surowe dane). Agregaty trzymane dłużej – do decyzji w etapie 2.
+- Retencja 90 dni (surowe dane). Agregaty trzymane dłużej: `energy_1m` 1 rok, `energy_1h` bez limitu (tabela wyżej).
 
-### Agregaty ciągłe
+### Agregaty ciągłe energii (migracja `002_energy_aggregates.sql`, krok k6)
 
-| Widok | Okno | Zawartość |
-| --- | --- | --- |
-| energy_1m | 1 min | śr./min/maks. mocy, napięcia, prądu; przyrost energii |
-| energy_1h | 1 h | jak wyżej, na godzinę; podstawa kosztów |
-| pump_1m | 1 min | śr./maks. wibracji RMS, temperatury łożyska, prądu, przepływu, obrotów |
+Agregaty przechowują **wyłącznie wartości addytywne lub odtwarzalne** (liczności, sumy, minima, maksima, pierwsza i ostatnia
+wartość), bo tylko takie można poprawnie złożyć w agregat godzinny. Wartości pochodne liczą widoki (niżej).
+
+| Agregat | Okno | Źródło | Zawartość |
+| --- | --- | --- | --- |
+| `energy_1m` | 1 min | `measurements` | dla każdej metryki: liczność `*_n` (sekundy z pomiarem) i suma `*_sum`; dla mocy czynnej, napięcia i prądu także `*_min`, `*_max`; stan liczników energii `import_first/last/min/max` i `export_first/last/min/max` (Wh); `meter_error_seconds` (sekundy z `meter_status` ≠ 0) i `meter_status_n` |
+| `energy_1h` | 1 h | `energy_1m` (agregat hierarchiczny) | te same kolumny, złożone z minutowych (sumy sum, minima z minimów, `first`/`last` z wiaderek) |
+| `pump_1m` | 1 min | `measurements` | planowany w etapie 4 |
+
+- `plc-01` (tylko `link_status`) nie tworzy wierszy; agregaty obejmują metryki licznika wymienione w migracji.
+- **Luki są normalnym stanem danych** (epizody, awarie, zaniki zasilania): nie ma interpolacji, a brak próbek widać w `*_n` i `coverage`.
+- Tryb czasu rzeczywistego (`materialized_only = false`): zapytania widzą też bieżące, jeszcze niezmaterializowane wiaderko.
+- Wiaderka są w UTC; tylko widok dobowy używa doby lokalnej `Europe/Warsaw` (stała do etapu 4).
+
+| Obiekt | Odświeżanie (okno / opóźnienie końca / okres) | Kompresja | Retencja |
+| --- | --- | --- | --- |
+| `measurements` | n/d | po 1 dobie | 90 dni |
+| `energy_1m` | 7 dni / 1 min / 1 min | po 14 dniach (`segmentby = device_id`) | 1 rok |
+| `energy_1h` | 30 dni / 1 h / 15 min | po 60 dniach (`segmentby = device_id`) | bez limitu |
+
+Okna odświeżania są krótsze niż retencja surowych danych (90 dni), więc usunięcie starych surowych kawałków nie kasuje
+zmaterializowanych wiaderek; kompresja następuje po oknie odświeżania. Dane wpisane z odległej przeszłości (starsze niż okno)
+polityka nie odświeży: po wypełnieniu historii (etap 3) trzeba ręcznie wywołać `CALL refresh_continuous_aggregate('energy_1m', NULL, NULL)`,
+a potem to samo dla `energy_1h` (opis w `docs/ops/jumo-ipc-setup.md`).
+
+### Widoki pochodne energii (migracja `003_energy_views.sql`)
+
+`energy_1m_calc` i `energy_1h_calc` (urządzenie x wiaderko), `energy_daily_check` (urządzenie x doba lokalna).
+Okres próbkowania i rozdzielczość licznika **nie są stałymi w SQL**: pochodzą z `devices.meta` (`poll_interval_s`, `energy_resolution_wh`;
+ingest synchronizuje je z `config/devices.yaml`). Brak wartości daje NULL, a nie domysł.
+
+| Kolumna | Znaczenie |
+| --- | --- |
+| `*_avg` | suma / liczność (NULL przy zerowej liczności) |
+| `energy_integral_wh` | `active_power_sum x poll_interval_s / 3600`: energia z obecnych próbek, bez interpolacji przez luki |
+| `coverage` | `LEAST(1, active_power_n x poll_interval_s / długość_okna_s)`: jaka część okna ma pomiar mocy |
+| `bucket_complete` | okno już się zakończyło (`bucket + okno <= now()`); **bieżące wiaderko ma `coverage` < 1 z natury**, więc ta kolumna odróżnia „trwa” od „brak danych” |
+| `energy_import_delta_wh`, `energy_export_delta_wh` | przyrost licznika względem poprzedniego wiaderka **z odczytem licznika** (`LAG`, bez toolkitu); przy resecie (`*_last` mniejsze od poprzedniego) przyrost = `*_last` i flaga `import_reset` / `export_reset`; pierwsze wiaderko: `last - first` |
+| `gap_before` | odstęp od poprzedniego wiaderka z odczytem licznika większy niż okno: przyrost obejmuje czas, którego całka nie widzi |
+| `meter_error_seconds`, `meter_error_share` | sekundy ze `meter_status` ≠ 0 i ich udział w sekundach ze statusem |
+
+**Brak pokrycia nie jest błędem licznika.** `meter_error_seconds` liczy tylko sekundy, w których licznik **opublikował** status ≠ 0.
+Gdy PLC jest niedostępny (`link_status` ≠ 0), licznik nie publikuje statusu, więc te sekundy nie są błędem licznika, tylko spadkiem `coverage`.
+Awarię łącza z PLC widać w metryce `link_status` urządzenia `plc-01`.
+
+`energy_daily_check`: porównanie całki mocy z przyrostem licznika wzorcowego w dobie lokalnej `Europe/Warsaw`
+(`integral_wh`, `coverage` z uwzględnieniem długości doby przy zmianie czasu: 23 lub 25 godzin, `counter_delta_wh`,
+`integral_extrapolated_wh` = całka / pokrycie, NULL przy pokryciu poniżej 0,5, `diff_wh`, `day_complete`, `gap_before_count`).
+Licznik zmienia stan co `resolution_wh` (100 Wh), a obciążenie ok. 7 W to ok. 170 Wh na dobę, więc przyrost dobowy to 1-2 kroki:
+pierwszą miarą zgodności jest **`within_resolution`** (|`diff_wh`| nie większa niż jeden krok licznika), a **`deviation_pct`**
+jest podawana tylko gdy przyrost ma co najmniej 5 kroków licznika (inaczej NULL). Rejestry o większej rozdzielczości (30462-30485)
+zostają na etap 4, przed wyborem źródła kosztów.
+
+Wydajność widoków (`LAG` nad całym agregatem): wynik `EXPLAIN ANALYZE` na prawdziwych danych jest w raporcie `docs/handoff/e2-k6-report.md`.
 
 ### `machine_states`
 
@@ -120,9 +169,8 @@ Temat `zaklad/linia/urzadzenie/metryka` → `device_id` = `urzadzenie`,
 | sent_to_cloud | BOOLEAN | wymagane przez zasadę twardą nr 5 |
 | latency_ms | INTEGER | |
 
-## Do ustalenia w etapie 2
+## Ustalenia z etapu 2
 
-- Czy energię zapisujemy jako stan licznika (Wh) i liczymy przyrosty w agregatach,
-  czy collector liczy przyrosty – zależy od mapy rejestrów z etapu 1.
-- Retencja agregatów (propozycja: `energy_1h` bez limitu, `energy_1m` 1 rok).
-- Zmierzone zużycie dysku po dobie pracy.
+- Energia jest zapisywana jako stan licznika (Wh, mantysa x 10^wykładnik); przyrosty liczą widoki (`LAG`), a nie collector.
+- Retencja agregatów: `energy_1h` bez limitu, `energy_1m` 1 rok (migracja 002).
+- Zmierzony rozmiar po dobie pracy i rozmiary agregatów: raport `docs/handoff/e2-k6-report.md`.
