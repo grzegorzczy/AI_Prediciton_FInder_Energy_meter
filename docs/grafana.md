@@ -17,7 +17,7 @@ Grafana pokazuje dane, które zbieramy z PLC i licznika Finder 7M.24. Działa lo
 | **Przegląd** | stan PLC i licznika, moc teraz, zużycie dziś i wczoraj, moc maksymalna dziś, cos φ, pokrycie danych, wiek ostatniego odczytu, epizody błędu licznika | 30 s |
 | **Licznik na żywo** | U, I, P, Q, S, PF i f jako wykresy i kafelki, z wartościami min/maks./średnia w oknie | 5 s, domyślnie ostatnie 15 min |
 | **Jakość energii** | napięcie z pasmem orientacyjnym, minuty poza pasmem, histogram napięcia, odchyłka częstotliwości, cos φ i stosunek Q/P | ręczne |
-| **Energia i profil** | zużycie na minutę, godzinę i dobę z pokryciem, profil godzina × dzień tygodnia, porównania (doba i tydzień wcześniej), moc bazowa, kontrola z licznikiem wzorcowym | ręczne |
+| **Energia i profil** | zużycie na minutę, godzinę i dobę z pokryciem, profil godzina × dzień tygodnia, porównania (doba i tydzień wcześniej), moc bazowa, kontrola z licznikiem wzorcowym; panele dobowe i profil mają własny zakres czasu (ostatnie 14 i 28 dni) | ręczne |
 | **Stan i diagnostyka** | oś stanów łącza z PLC i licznika, kody błędów komunikacji, liczniki błędów, wiek danych, sekundy bez pomiaru, wiersze na minutę | ręczne |
 
 U góry każdego dashboardu: wybór licznika (**Licznik**; kolejne liczniki z etapu 3 pojawią się tam same), linki do pozostałych dashboardów (zachowują czas i licznik)
@@ -43,6 +43,11 @@ Licznik zmienia stan co 100 Wh, więc przy obciążeniu rzędu kilku watów przy
 Bieżąca minuta, godzina i doba mają pokrycie poniżej 100% z natury (jeszcze trwają).
 
 Wykresy nie łączą punktów przez luki: przerwa w linii oznacza brak danych, a nie zero.
+
+**Profil godzina × dzień tygodnia** pokazuje średnią moc jako procent największej średniej mocy w profilu (100% = wartość z kafelka „Maks. średnia moc profilu” obok); wszystkie komórki mają jedną skalę
+kolorów od zielonego (mało) przez żółty do czerwonego, a pusta komórka bez koloru to brak danych. **Bieżąca minuta, godzina i doba** mają na wykresach pokrycie liczone względem upłyniętej części okna i oznaczone
+pomarańczowo, żeby brak końcówki nie wyglądał na awarię. **Epizody błędu licznika dziś** to liczba przejść `meter_status` z 0 na wartość ≠ 0 w bazie od północy; licznik `meter_error_count` z PLC zeruje się przy restarcie PLC,
+więc nie musi się z nią zgadzać.
 
 ## Progi i stałe (zmienne dashboardu)
 

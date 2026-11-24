@@ -84,7 +84,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Napięcie fazowe [V]. Ostatnia wartość w oknie.",
+      "description": "Napięcie U: ostatnia wartość w oknie. Napięcie fazowe [V].",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -97,7 +97,7 @@
       },
       "gridPos": {
         "h": 3,
-        "w": 3,
+        "w": 4,
         "x": 0,
         "y": 0
       },
@@ -129,7 +129,7 @@
           "refId": "A"
         }
       ],
-      "title": "Napięcie U: teraz",
+      "title": "U",
       "type": "stat"
     },
     {
@@ -137,7 +137,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Prąd [A]. Ostatnia wartość w oknie.",
+      "description": "Prąd I: ostatnia wartość w oknie. Prąd [A].",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -150,8 +150,8 @@
       },
       "gridPos": {
         "h": 3,
-        "w": 3,
-        "x": 3,
+        "w": 4,
+        "x": 4,
         "y": 0
       },
       "id": 2,
@@ -182,7 +182,7 @@
           "refId": "A"
         }
       ],
-      "title": "Prąd I: teraz",
+      "title": "I",
       "type": "stat"
     },
     {
@@ -190,7 +190,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Moc czynna P [W]: faktycznie pobierana energia. Ostatnia wartość w oknie.",
+      "description": "Moc czynna P: ostatnia wartość w oknie. Moc czynna P [W]: faktycznie pobierana energia.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -203,8 +203,8 @@
       },
       "gridPos": {
         "h": 3,
-        "w": 3,
-        "x": 6,
+        "w": 4,
+        "x": 8,
         "y": 0
       },
       "id": 3,
@@ -235,7 +235,7 @@
           "refId": "A"
         }
       ],
-      "title": "Moc czynna P: teraz",
+      "title": "P",
       "type": "stat"
     },
     {
@@ -243,21 +243,21 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Moc bierna Q [var]. Ostatnia wartość w oknie.",
+      "description": "Moc bierna Q: ostatnia wartość w oknie. Moc bierna Q [var].",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "decimals": 2,
-          "unit": "reactivevoltamp"
+          "unit": "suffix: var"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 3,
         "w": 3,
-        "x": 9,
+        "x": 12,
         "y": 0
       },
       "id": 4,
@@ -288,7 +288,7 @@
           "refId": "A"
         }
       ],
-      "title": "Moc bierna Q: teraz",
+      "title": "Q",
       "type": "stat"
     },
     {
@@ -296,7 +296,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Moc pozorna S [VA] = U × I. Ostatnia wartość w oknie.",
+      "description": "Moc pozorna S: ostatnia wartość w oknie. Moc pozorna S [VA] = U × I.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -310,7 +310,7 @@
       "gridPos": {
         "h": 3,
         "w": 3,
-        "x": 12,
+        "x": 15,
         "y": 0
       },
       "id": 5,
@@ -341,7 +341,7 @@
           "refId": "A"
         }
       ],
-      "title": "Moc pozorna S: teraz",
+      "title": "S",
       "type": "stat"
     },
     {
@@ -349,7 +349,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "PF = P / S (cos φ przy przebiegach sinusoidalnych), bez jednostki. Ostatnia wartość w oknie.",
+      "description": "Współczynnik mocy PF: ostatnia wartość w oknie. PF = P / S (cos φ przy przebiegach sinusoidalnych), bez jednostki.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -363,7 +363,7 @@
       "gridPos": {
         "h": 3,
         "w": 3,
-        "x": 15,
+        "x": 18,
         "y": 0
       },
       "id": 6,
@@ -394,7 +394,7 @@
           "refId": "A"
         }
       ],
-      "title": "Współczynnik mocy PF: teraz",
+      "title": "PF",
       "type": "stat"
     },
     {
@@ -402,7 +402,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Częstotliwość sieci [Hz]. Ostatnia wartość w oknie.",
+      "description": "Częstotliwość f: ostatnia wartość w oknie. Częstotliwość sieci [Hz].",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -416,7 +416,7 @@
       "gridPos": {
         "h": 3,
         "w": 3,
-        "x": 18,
+        "x": 21,
         "y": 0
       },
       "id": 7,
@@ -447,7 +447,7 @@
           "refId": "A"
         }
       ],
-      "title": "Częstotliwość f: teraz",
+      "title": "f",
       "type": "stat"
     },
     {
@@ -506,8 +506,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
@@ -564,8 +565,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
@@ -622,8 +624,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
@@ -680,14 +683,15 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
           },
           "decimals": 2,
-          "unit": "reactivevoltamp"
+          "unit": "suffix: var"
         },
         "overrides": []
       },
@@ -738,8 +742,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
@@ -796,13 +801,16 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
           },
           "decimals": 2,
+          "max": 1,
+          "min": 0,
           "unit": ""
         },
         "overrides": []
@@ -854,8 +862,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 5000
@@ -867,7 +876,7 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 31
       },

@@ -86,6 +86,22 @@ def targets(dash: dict):
             yield panel["title"], target
 
 
+def panel_targets(dash: dict):
+    """(panel, cel zapytania) dla każdego celu każdego panelu."""
+    for panel in dash["panels"]:
+        for target in panel.get("targets", []):
+            yield panel, target
+
+
+def effective_seconds(panel: dict, default_s: float) -> float:
+    """Zakres czasu panelu: własny `timeFrom` (np. "28d", "14d") albo zakres pulpitu."""
+    own = panel.get("timeFrom")
+    if not own:
+        return default_s
+    number, unit = int(own[:-1]), own[-1]
+    return number * {"m": 60, "h": 3600, "d": 86400, "w": 7 * 86400}[unit]
+
+
 def expand_vars(sql: str, device: str, overrides: dict | None = None) -> str:
     values = {**DEFAULT_VARS, **(overrides or {})}
     for name in sorted(values, key=len, reverse=True):

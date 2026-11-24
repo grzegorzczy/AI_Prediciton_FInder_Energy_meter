@@ -161,7 +161,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Łącze z PLC\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) ORDER BY 1",
+          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Łącze z PLC\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -250,7 +250,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Stan licznika\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) ORDER BY 1",
+          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Stan licznika\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -262,7 +262,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Kod błędu publikowany tylko przy meter_status ≠ 0: 161 RESPONSE_TIMEOUT, 162 RESPONSE_CRC_FAIL, 163 RESPONSE_WRONG_SLAVE (źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Pusty pasek: brak błędu.",
+      "description": "Kod błędu publikowany tylko przy meter_status ≠ 0: 161 RESPONSE_TIMEOUT, 162 RESPONSE_CRC_FAIL, 163 RESPONSE_WRONG_SLAVE (źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Pusty pasek: brak błędów w zakresie.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -299,6 +299,7 @@
               "type": "value"
             }
           ],
+          "noValue": "Brak błędów w zakresie",
           "unit": ""
         },
         "overrides": []
@@ -334,7 +335,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT time, value AS \"Kod błędu\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_error_code' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' ORDER BY time",
+          "rawSql": "SELECT time, value AS \"Kod błędu\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_error_code' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -353,8 +354,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 60000
@@ -411,8 +413,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 60000
@@ -462,20 +465,22 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Ile sekund w godzinie nie ma pomiaru mocy (3600 × (1 − pokrycie)). Godzina w toku (jasna seria) jest niepełna z natury; awaria PLC i zanik zasilania także dają sekundy bez pomiaru, ale nie są błędem licznika.",
+      "description": "Ile sekund w godzinie nie ma pomiaru mocy, liczone tylko względem upłyniętej części godziny (godzina w toku, jasna seria, nie jest karana za czas, który jeszcze nie nastąpił). Awaria PLC i zanik zasilania także dają sekundy bez pomiaru, ale nie są błędem licznika.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 1,
             "drawStyle": "bars",
-            "fillOpacity": 25,
+            "fillOpacity": 60,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 9000000
           },
           "decimals": 0,
+          "min": 0,
           "unit": "s"
         },
         "overrides": []
@@ -508,7 +513,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT bucket AS time, CASE WHEN bucket_complete THEN 3600 * (1 - coverage) END AS \"Godzina zakończona\", CASE WHEN NOT bucket_complete THEN 3600 * (1 - coverage) END AS \"Godzina w toku\" FROM energy_1h_calc WHERE $__timeFilter(bucket) AND device_id = '$device' AND coverage IS NOT NULL ORDER BY 1",
+          "rawSql": "SELECT bucket AS time, CASE WHEN bucket + interval '1 hour' <= now() THEN greatest(0, extract(epoch FROM least(now(), bucket + interval '1 hour') - bucket) - active_power_n * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device')) END AS \"Godzina zakończona\", CASE WHEN bucket + interval '1 hour' > now() THEN greatest(0, extract(epoch FROM least(now(), bucket + interval '1 hour') - bucket) - active_power_n * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device')) END AS \"Godzina w toku\" FROM energy_1h WHERE $__timeFilter(bucket) AND device_id = '$device' AND (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') IS NOT NULL ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -520,20 +525,22 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 na sekundę (780 na minutę), przy meter_status ≠ 0 5 na sekundę, przy awarii PLC 1 na sekundę (model z docs/status-codes.md). Panel dla zakresów do 24 godzin.",
+      "description": "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 na sekundę (780 na minutę), przy meter_status ≠ 0 5 na sekundę, przy awarii PLC 1 na sekundę (model z docs/status-codes.md). Bieżąca, niepełna minuta jest pomijana. Panel dla zakresów do 24 godzin.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 150000
           },
           "decimals": 0,
+          "min": 0,
           "unit": ""
         },
         "overrides": []
@@ -566,7 +573,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket(interval '1 minute', time) AS time, count(*) AS \"Wiersze\" FROM measurements WHERE $__timeFilter(time) AND (device_id = '$device' OR device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1)) AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '24 hours' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT time_bucket(interval '1 minute', time) AS time, count(*) AS \"Wiersze\" FROM measurements WHERE $__timeFilter(time) AND time < date_trunc('minute', now()) AND (device_id = '$device' OR device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1)) AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '24 hours' GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],

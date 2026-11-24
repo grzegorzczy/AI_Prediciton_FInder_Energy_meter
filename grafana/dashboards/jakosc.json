@@ -84,15 +84,16 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Napięcie [V] w kroku wykresu: minimum, średnia i maksimum z agregatu minutowego, z granicami pasma orientacyjnego (napięcie znamionowe ± pasmo %).",
+      "description": "Napięcie [V] w kroku wykresu: minimum, średnia i maksimum z agregatu minutowego. Czerwone przerywane linie to granice pasma orientacyjnego (napięcie znamionowe ± pasmo %); linia napięcia poza nimi oznacza wyjście z pasma.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 150000
@@ -193,7 +194,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
+        "h": 9,
         "w": 4,
         "x": 16,
         "y": 0
@@ -226,7 +227,7 @@
           "refId": "A"
         }
       ],
-      "title": "Minuty z napięciem poza pasmem",
+      "title": "Minuty poza pasmem U",
       "type": "stat"
     },
     {
@@ -234,7 +235,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu obok).",
+      "description": "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu „Minuty poza pasmem U”).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -246,7 +247,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
+        "h": 9,
         "w": 4,
         "x": 20,
         "y": 0
@@ -279,7 +280,7 @@
           "refId": "A"
         }
       ],
-      "title": "Minuty z danymi napięcia",
+      "title": "Minuty z danymi",
       "type": "stat"
     },
     {
@@ -301,8 +302,8 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
-        "w": 8,
+        "h": 8,
+        "w": 12,
         "x": 0,
         "y": 9
       },
@@ -341,21 +342,22 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Średnia częstotliwość sieci minus częstotliwość znamionowa [Hz] w kroku wykresu, z granicami pasma (± zmienna).",
+      "description": "Średnia częstotliwość sieci minus częstotliwość znamionowa [Hz] w kroku wykresu, z granicami pasma (± zmienna, czerwone przerywane linie).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 150000
           },
-          "decimals": 3,
-          "unit": "hertz"
+          "decimals": 2,
+          "unit": "suffix: Hz"
         },
         "overrides": [
           {
@@ -388,8 +390,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 18
+        "x": 12,
+        "y": 9
       },
       "id": 5,
       "options": {
@@ -425,20 +427,23 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Współczynnik mocy PF (średnia w kroku wykresu) oraz stosunek mocy biernej do czynnej Q/P (średnie w kroku; pusty, gdy P ≈ 0).",
+      "description": "Współczynnik mocy PF: średnia w kroku wykresu, z agregatu minutowego (0–1).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
+            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "lineWidth": 1,
             "showPoints": "never",
             "spanNulls": 150000
           },
           "decimals": 2,
+          "max": 1,
+          "min": 0,
           "unit": ""
         },
         "overrides": []
@@ -446,8 +451,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 18
+        "x": 0,
+        "y": 17
       },
       "id": 6,
       "options": {
@@ -471,11 +476,70 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\", (sum(reactive_power_sum) / nullif(sum(reactive_power_n), 0)) / nullif(sum(active_power_sum) / nullif(sum(active_power_n), 0), 0) AS \"Q/P\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
-      "title": "Współczynnik mocy (cos φ) i stosunek Q/P",
+      "title": "Współczynnik mocy (cos φ)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Stosunek średniej mocy biernej do średniej mocy czynnej Q/P w kroku wykresu; pusty, gdy P ≈ 0. Znak zależy od charakteru obciążenia (indukcyjne lub pojemnościowe).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 2,
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), (sum(reactive_power_sum) / nullif(sum(reactive_power_n), 0)) / nullif(sum(active_power_sum) / nullif(sum(active_power_n), 0), 0) AS \"Q/P\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Stosunek mocy biernej do czynnej (Q/P)",
       "type": "timeseries"
     }
   ],

@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from grafana_support import RANGES, dashboards, ds_query, expand_vars, targets
+from grafana_support import RANGES, dashboards, ds_query, effective_seconds, expand_vars, panel_targets, targets
 
 M1, M2 = "finder_7m24_1", "finder_7m24_2"
 DASHES = dashboards()
@@ -14,6 +14,9 @@ DASHES = dashboards()
 EXPECT_EMPTY = {
     ("Wiersze na minutę w bazie", "7d"), ("Wiersze na minutę w bazie", "30d"),
     ("Zużycie na minutę", "30d"),
+}
+# Osie stanów mają wiersz-wartownik (pole czasu przy pustym wyniku, K7-V4): przy ograniczeniu zakresu zostaje tylko on.
+SENTINEL_ONLY = {
     ("Łącze z PLC (link_status)", "30d"), ("Stan licznika (meter_status)", "30d"),
     ("Kod błędu komunikacji PLC–licznik (meter_error_code)", "30d"),
 }
@@ -31,9 +34,11 @@ def run(dash, range_name, device):
     end = time.time()
     start = end - RANGES[range_name]
     out = []
-    for title, target in targets(dash):
+    for panel, target in panel_targets(dash):
+        # panel z własnym zakresem czasu (timeFrom) używa go zamiast zakresu pulpitu
+        panel_start = end - effective_seconds(panel, RANGES[range_name])
         sql = expand_vars(target["rawSql"], device)
-        out.append((title, target["refId"], sql, ds_query(sql, target["format"], start, end, target["refId"])))
+        out.append((panel["title"], target["refId"], sql, ds_query(sql, target["format"], panel_start, end, target["refId"])))
     return out
 
 
@@ -57,7 +62,9 @@ def test_every_panel_query_runs_without_error_for_both_meters(grafana_data, name
 @pytest.mark.parametrize("name", sorted(DASHES))
 def test_every_panel_returns_data_for_the_main_meter(grafana_data, name, range_name):
     for title, rows in rows_by_panel(DASHES[name], range_name, M1).items():
-        if (title, range_name) in EXPECT_EMPTY:
+        if (title, range_name) in SENTINEL_ONLY:
+            assert rows <= 1, f"{name}/{title} {range_name}: ograniczony zakres powinien dać tylko wiersz-wartownik, a jest {rows}"
+        elif (title, range_name) in EXPECT_EMPTY:
             assert rows == 0, f"{name}/{title} {range_name}: panel ograniczony zakresem powinien być pusty, a ma {rows} wierszy"
         elif (title, range_name) not in MAY_BE_EMPTY:
             assert rows > 0, f"{name}/{title} {range_name}: brak danych"
@@ -70,7 +77,7 @@ def test_live_panels_return_data_for_a_short_range(grafana_data):
 
 
 def test_device_variable_separates_the_meters(grafana_data):
-    power = next(t for title, t in targets(DASHES["na-zywo"]) if title == "Moc czynna P: teraz")
+    power = next(t for title, t in targets(DASHES["na-zywo"]) if title == "P")
     now = time.time()
     first = ds_query(expand_vars(power["rawSql"], M1), "time_series", now - 900, now)
     second = ds_query(expand_vars(power["rawSql"], M2), "time_series", now - 900, now)
