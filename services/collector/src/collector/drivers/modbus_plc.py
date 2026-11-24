@@ -96,6 +96,9 @@ class ModbusPlcDriver:
                 client.close()
                 self._record_failure()
                 raise SourceError(f"nie można połączyć z {plc.host}:{plc.port}: {exc!r}") from exc
+            except asyncio.CancelledError:
+                client.close()                      # zadanie porzucone w trakcie łączenia: nie zostawiamy otwartego gniazda
+                raise
             if not connected:
                 client.close()
                 self._record_failure()
@@ -111,6 +114,9 @@ class ModbusPlcDriver:
             await self._drop()
             self._record_failure()
             raise SourceError(f"odczyt FC04 nie powiódł się: {exc!r}") from exc
+        except asyncio.CancelledError:
+            await self._drop()                      # zadanie porzucone w trakcie odczytu
+            raise
 
         if len(words) != plc.read_count:
             await self._drop()
@@ -120,6 +126,12 @@ class ModbusPlcDriver:
         self._failures = 0
         self._next_attempt = 0.0
         return Registers(plc.read_start, words)
+
+    async def reset(self) -> None:
+        """Po porzuceniu zawieszonego odczytu: nowy klient i brak cofania przed następną próbą (K6-U2)."""
+        await self._drop()
+        self._failures = 0
+        self._next_attempt = 0.0
 
     async def close(self) -> None:
         await self._drop()

@@ -15,5 +15,9 @@ class SourceDriver(Protocol):
         """Zwraca świeży obraz rejestrów albo zgłasza SourceError. Nie blokuje dłużej niż timeout źródła."""
         ...
 
+    async def reset(self) -> None:
+        """Porzuca bieżące połączenie i pozwala na natychmiastową nową próbę (po zawieszonym odczycie)."""
+        ...
+
     async def close(self) -> None:
         ...

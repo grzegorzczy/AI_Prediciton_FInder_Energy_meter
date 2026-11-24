@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 from .codec import Registers, round_real32
 from .config import Config, MeterConfig
-from .status import LinkStatus, MeterStatus
+from .status import LinkStatus, MeterStatus, describe_error_code
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,7 @@ class Evaluation:
     link_status: LinkStatus | None          # None = rozgrzewka, nic nie publikujemy
     readings: list[Reading] = field(default_factory=list)
     states: dict[str, str] = field(default_factory=dict)
+    details: dict[str, str] = field(default_factory=dict)   # szczegół stanu do logu (np. kod błędu licznika)
     skipped: list[str] = field(default_factory=list)   # metryki pominięte (wartość nie jest liczbą skończoną)
 
 
@@ -118,6 +119,12 @@ class Evaluator:
             add(status_metric, raw_status, "")
             known = raw_status in (MeterStatus.COMM_ERROR, MeterStatus.NO_DATA)
             out.states[key] = MeterStatus(raw_status).name if known else f"UNKNOWN_STATUS_{raw_status}"
+            # Kod błędu komunikacji (rejestr 11) jest ważny tylko przy statusie != 0; przy OK nie jest publikowany.
+            if profile.error_code is not None:
+                code = int(regs.read(profile.error_code.type, base + profile.error_code.offset))
+                if profile.error_code.metric:
+                    add(profile.error_code.metric, code, profile.error_code.unit)
+                out.details[key] = describe_error_code(code)
             return
 
         serial = regs.ascii(base + profile.serial_offset, profile.serial_registers)

@@ -75,7 +75,9 @@ def test_collector_settings_live_in_configuration(cfg):
     assert profile["diagnostics"]["error_count"]["metric"] == "meter_error_count"
     assert profile["diagnostics"]["data_age_ms"]["metric"] == "meter_data_age_ms"
     assert profile["diagnostics"]["data_age_ms"]["omit_value"] == 0xFFFFFFFF
-    assert "metric" not in profile["diagnostics"]["error_code"]          # tylko do logu
+    assert profile["diagnostics"]["error_code"]["metric"] == "meter_error_code"   # publikowany tylko przy status != 0
+    for name in ("energy_import_wh", "energy_export_wh"):
+        assert profile["energy"][name]["resolution_wh"] == 100                    # rozdzielczość licznika (agregaty energii)
 
 
 def test_status_metric_names_match_database_constraint(cfg):

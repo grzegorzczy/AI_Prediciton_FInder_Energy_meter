@@ -220,19 +220,31 @@ def test_rs485_break_publishes_status_1_and_diagnostics_then_measurements_return
         async with Harness(config) as h:
             await h.until(h.value_is("plc-01/link_status", 0))
             await h.until(lambda: h.latest("finder_7m24_1/voltage"))
-            h.plc.set_meter(status=1, error_code=161, error_count=1, data_age_ms=5200)
+            h.plc.set_meter(status=1, error_code=162, error_count=1, data_age_ms=5200)
             mark = time.monotonic()
             await h.until(h.value_is("finder_7m24_1/meter_status", 1, since=mark))
             await h.until(h.value_is("finder_7m24_1/meter_error_count", 1, since=mark))
             await h.until(h.value_is("finder_7m24_1/meter_data_age_ms", 5200, since=mark))
+            await h.until(h.value_is("finder_7m24_1/meter_error_code", 162, since=mark))
             detected = time.monotonic()
             await asyncio.sleep(0.5)
             assert h.latest("finder_7m24_1/voltage", since=detected) is None          # bez pomiarów w czasie przerwy
             assert h.latest("plc-01/link_status", since=mark)["value"] == 0           # sam PLC sprawny
+
+            # sekunda z błędem licznika ma dokładnie 5 wierszy (K6-i: model 13 / 5 / 1)
+            groups: dict[str, set] = {}
+            for moment, topic, body in h.listener.since(detected):
+                groups.setdefault(body["ts"], set()).add(topic[len(PREFIX):])
+            full = [groups[key] for key in sorted(groups)][:-1]                       # ostatnia grupa może być jeszcze w drodze
+            assert full and all(g == {"plc-01/link_status", "finder_7m24_1/meter_status", "finder_7m24_1/meter_error_count",
+                                      "finder_7m24_1/meter_data_age_ms", "finder_7m24_1/meter_error_code"} for g in full)
+
             h.plc.set_meter(status=0, error_code=0, error_count=1, data_age_ms=0)
             mark2 = time.monotonic()
             await h.until(h.value_is("finder_7m24_1/meter_status", 0, since=mark2))
             await h.until(lambda: h.latest("finder_7m24_1/voltage", since=mark2))
+            await asyncio.sleep(0.5)
+            assert h.latest("finder_7m24_1/meter_error_code", since=time.monotonic() - 0.4) is None   # przy OK kod nie jest publikowany
             h.assert_only_reads()
 
     run(scenario())

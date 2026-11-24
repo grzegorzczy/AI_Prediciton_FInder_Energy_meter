@@ -29,7 +29,7 @@ profiles:
     block_size: 50
     status: { offset: 0, type: uint16, metric: meter_status }   # 0 OK, 1 COMM_ERROR, 2 NO_DATA (10 liczy collector)
     diagnostics:
-      error_code: { offset: 1, type: uint16 }                   # tylko do logu (brak 'metric')
+      error_code: { offset: 1, type: uint16, metric: meter_error_code }   # publikowany tylko przy meter_status != 0
       error_count: { offset: 2, type: uint16, metric: meter_error_count }
       data_age_ms: { offset: 4, type: uint32, unit: ms, metric: meter_data_age_ms, omit_value: 0xFFFFFFFF }
     metrics:
@@ -42,8 +42,9 @@ profiles:
       current: { offset: 18, type: real32, unit: A }
     # Stan licznika w Wh = mantysa × 10^wykładnik (nie z REAL kWh, który traci rozdzielczość).
     energy:
-      energy_import_wh: { mantissa: 24, exponent: 26, unit: Wh }
-      energy_export_wh: { mantissa: 27, exponent: 29, unit: Wh }
+      # resolution_wh: rozdzielczość stanu licznika (wykładnik 2 w rejestrze 36 = 100 Wh); trafia do devices.meta (agregaty energii)
+      energy_import_wh: { mantissa: 24, exponent: 26, unit: Wh, resolution_wh: 100 }
+      energy_export_wh: { mantissa: 27, exponent: 29, unit: Wh, resolution_wh: 100 }
     serial: { offset: 30, type: ascii, registers: 4 }
 
 devices:
