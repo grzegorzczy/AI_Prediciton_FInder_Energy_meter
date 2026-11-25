@@ -592,19 +592,27 @@ def energy() -> Dash:
                      "Energia bierna z całki mocy biernej [varh] w każdej godzinie, z podziałem na znak Q (suma Q × okres próbkowania / 3600 z obecnych próbek; "
                      "agregat godzinny, obejmuje także okres sprzed mapy v2). Q > 0: indukcyjna (konwencja odbiornika), Q < 0: pojemnościowa, podana jako moduł, "
                      "żeby porównywać ją ze stanem licznika n4. Bieżąca godzina jest niepełna z natury.",
-                     [target(f"SELECT bucket AS time, reactive_pos_integral_varh AS \"Q > 0 [varh]\", reactive_neg_integral_varh AS \"|Q| przy Q < 0 [varh]\" "
-                             f"FROM reactive_1h_calc WHERE $__timeFilter(bucket) AND {DEV} ORDER BY 1")],
+                     [target(f"SELECT bucket AS time, reactive_pos_sum * {POLL} / 3600.0 AS \"Q > 0 [varh]\", -reactive_neg_sum * {POLL} / 3600.0 AS \"|Q| przy Q < 0 [varh]\" "
+                             f"FROM energy_ext_1h WHERE $__timeFilter(bucket) AND {DEV} AND reactive_power_n > 0 ORDER BY 1")],
                      unit="suffix: varh", bars=True, span_ms=9000000, decimals=2, min_=0), 12, 8, new_row=True)
     d.add(barchart(f"Energia bierna na dobę: całka i licznik (ostatnie {DAYS_RANGE})",
                    "Energia bierna [varh] w dobie lokalnej: całka mocy biernej (Q > 0 i |Q| przy Q < 0) oraz przyrost liczników n2 (Q > 0) i n4 (Q < 0). "
+                   "Przyrost liczy zapytanie z agregatu godzinnego z zapasem 3 dni wstecz (jak widok reactive_1h_calc, ale bez przeglądania całej historii). "
                    "Licznik zmienia stan co 100 varh, a przy Q ≈ −9 var to jeden krok na ok. 11 godzin, więc przyrost dobowy to 0, 100 lub 200: "
                    "brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero). "
                    f"Zakres: ostatnie {DAYS_RANGE} liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
-                   [target(f"SELECT to_char(day, 'DD.MM') AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", "
-                           f"pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM ("
-                           f"SELECT (bucket AT TIME ZONE '{TZ}')::date AS day, sum(reactive_pos_integral_varh) AS pos_int, sum(reactive_neg_integral_varh) AS neg_int, "
-                           f"sum(reactive_pos_delta_varh) AS pos_delta, sum(reactive_neg_delta_varh) AS neg_delta FROM reactive_1h_calc "
-                           f"WHERE {DEV} AND (bucket AT TIME ZONE '{TZ}')::date >= {OWN_RANGE_MARKER['daily']} GROUP BY 1) g ORDER BY day", "table")],
+                   [target("WITH h AS (SELECT bucket, counter_pos_first AS pf, counter_pos_last AS pl, counter_neg_first AS nf, counter_neg_last AS nl, "
+                           "reactive_pos_sum, reactive_neg_sum FROM energy_ext_1h WHERE " + DEV + " AND bucket >= now() - interval '17 days'), "
+                           "pos AS (SELECT bucket, pf, pl, lag(pl) OVER (ORDER BY bucket) AS prev FROM h WHERE pl IS NOT NULL), "
+                           "neg AS (SELECT bucket, nf, nl, lag(nl) OVER (ORDER BY bucket) AS prev FROM h WHERE nl IS NOT NULL) "
+                           "SELECT to_char(day, 'DD.MM') AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", "
+                           "pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM ("
+                           f"SELECT (h.bucket AT TIME ZONE '{TZ}')::date AS day, sum(h.reactive_pos_sum) * {POLL} / 3600.0 AS pos_int, "
+                           f"-sum(h.reactive_neg_sum) * {POLL} / 3600.0 AS neg_int, "
+                           "sum(CASE WHEN p.pl IS NULL THEN NULL WHEN p.prev IS NULL THEN p.pl - p.pf WHEN p.pl < p.prev THEN p.pl ELSE p.pl - p.prev END) AS pos_delta, "
+                           "sum(CASE WHEN n.nl IS NULL THEN NULL WHEN n.prev IS NULL THEN n.nl - n.nf WHEN n.nl < n.prev THEN n.nl ELSE n.nl - n.prev END) AS neg_delta "
+                           "FROM h LEFT JOIN pos p ON p.bucket = h.bucket LEFT JOIN neg n ON n.bucket = h.bucket "
+                           f"WHERE (h.bucket AT TIME ZONE '{TZ}')::date >= {OWN_RANGE_MARKER['daily']} GROUP BY 1) g ORDER BY day", "table")],
                    unit="suffix: varh", decimals=1, min_=0, no_value=NO_V2), 12, 8)
     d.add(table(f"Kontrola całki mocy a licznik wzorcowy (doby, ostatnie {DAYS_RANGE})",
                 "Dla każdej doby lokalnej: energia z całki mocy, pokrycie doby, przyrost licznika wzorcowego i różnica. Skróty: Licznik = przyrost licznika wzorcowego, "

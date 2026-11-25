@@ -270,7 +270,10 @@ def test_reactive_energy_panels_describe_the_resolution_and_use_the_view():
     panels = _panels()
     hourly = panels[("energia", "Energia bierna z mocy (całka Q, godziny)")]
     daily = panels[("energia", "Energia bierna na dobę: całka i licznik (ostatnie 14d)")]
-    assert "reactive_1h_calc" in hourly["targets"][0]["rawSql"] and "reactive_1h_calc" in daily["targets"][0]["rawSql"]
+    # panele czytają agregat godzinny wprost (widok reactive_1h_calc zostaje dla analityki): zapytania bez przeglądania całej historii
+    assert "energy_ext_1h" in hourly["targets"][0]["rawSql"] and "energy_ext_1h" in daily["targets"][0]["rawSql"]
+    assert "reactive_1h_calc" not in hourly["targets"][0]["rawSql"] and "reactive_1h_calc" not in daily["targets"][0]["rawSql"]
+    assert "interval '17 days'" in daily["targets"][0]["rawSql"]                    # zapas 3 dni na poprzednie wiaderko licznika
     assert "100 varh" in daily["description"] and "11 godzin" in daily["description"] and "Q < 0" in daily["description"]
     assert daily["type"] == "barchart"
 
