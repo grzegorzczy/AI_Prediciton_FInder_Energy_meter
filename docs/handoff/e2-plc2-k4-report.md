@@ -65,4 +65,4 @@ Wszystkie panele v2 zwracają dane: „THD napięcia (THD U)”, „THD prądu (
 
 ## Stan testów
 
-Końcowy pełny przebieg na komputerze: uzupełniony poniżej po jego zakończeniu.
+Pełny zestaw na komputerze po migracjach 009 i 010: **492 z 492 przeszło poza jednym testem Grafany** (3 testy wydajnościowe pomijane w zwykłym przebiegu, 11 min 31 s), bez resztek `aip-test`. Padł `test_own_range_panels_return_the_same_data_for_any_dashboard_range` (k7d): porównywał też dobę „w toku”, której etykieta zawiera procent zależny od zegara („w toku, 45%”) i której wartości różniły się szumem sumowania (15. cyfra). To była **niestabilność testu, nie panelu** (poprzednie przebiegi przechodziły); test normalizuje teraz liczby do 9 cyfr znaczących i pomija procent doby w toku. Po poprawce: testy Grafany **106 z 106**; testy bazy związane z 009 i 010 (61 testów: zgodność przed/po, naprawa brzegów, polityki, przerwanie migracji w siedmiu punktach, okna) przeszły wcześniej. Pełnego, jednolitego przebiegu po tej poprawce testu nie powtarzałem (zmiana dotyczy wyłącznie jednego testu).
