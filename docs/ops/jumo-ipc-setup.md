@@ -299,6 +299,12 @@ SELECT * FROM energy_daily_check ORDER BY day DESC LIMIT 7;
 Przerwana migracja `002` (np. restart w trakcie) nic nie psuje: runner zapisuje sumę kontrolną dopiero po ostatniej instrukcji,
 a wszystkie instrukcje są idempotentne, więc kolejne `docker compose up -d` wykona plik od początku.
 
+## Logi kontenerów (od k8a)
+
+Wszystkie usługi `aip-*` logują sterownikiem `local` (binarny, rotacja `max-size: 10m`, `max-file: 5`), ustawionym w `docker-compose.yml` (bez zmian w `daemon.json`, bez restartu demona; kontenery smartWARE nietknięte).
+Powód: po utracie zasilania sterownik `json-file` zostawiał w pliku logu bajty `zerowe (NUL)` i `docker logs` przestawało działać (E2-PLC1). Odtworzenie kontenerów przy wdrożeniu (R-1) usuwa też stare uszkodzone pliki logów.
+Czytanie logów bez zmian: `docker logs aip-ingest`. Limit pamięci Grafany: 512 MiB i `GOMEMLIMIT=400MiB` (384 MiB kończyło się zabiciem przez OOM-killera jądra; ślad: `journalctl -k | grep -i oom`).
+
 ## Kolejność wdrożenia zmian (R-1, k7d)
 
 Zawsze w tej kolejności, na komputerze w `/home/jumo/ai-predykcja`:
