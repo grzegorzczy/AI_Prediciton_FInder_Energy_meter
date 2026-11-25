@@ -105,7 +105,7 @@ Czyste zamknięcie (nie utrata zasilania). Czasy UTC, z dziennika systemu, `dock
 - **Zachowanie usług:** collector i ingest zalogowały czyste zatrzymanie i start; ingest przy zatrzymaniu bazy zapisał „baza niedostępna … oczekujących: 14” (14 wiadomości bez potwierdzenia wróciło z brokera po wznowieniu sesji trwałej, bez duplikatów, `ON CONFLICT DO NOTHING`; sekunda 12:03:47 ma komplet 20 wierszy). Logi `docker logs` czytelne przed i po restarcie (sterownik `local`). Pętli ponowień z backoffem nie było potrzeba: Mosquitto i baza wstały przed collectorem i ingestem.
 - **smartWARE** (tylko odczyt `docker ps`): wszystkie 7 kontenerów wstało 12:04:21–22 i po minucie `healthy` (`mqtt` i `postgres-server` bez healthchecka, Up). Ich logi nadal `json-file` (nie ruszane).
 - **Grafana po rozruchu:** `/api/health` ok; pamięć 353 MiB / 512 po minucie, `memory.peak` 418 050 048 B (398,7 MiB = 77,9 % limitu), `oom_kill` = 0. To wyraźnie więcej niż 148,7 MiB po wcześniejszym wdrożeniu (start pod obciążeniem po rozruchu, gdy wstają też kontenery smartWARE); poniżej 80 %, ale blisko – do obserwacji w części B.
-- **Czas SSH:** pierwsza próba Grzegorza po restarcie (timeout), druga udana ok. 12:04:33 UTC (kontenery „Up 11 seconds”), czyli ok. 45 s od polecenia (stoper od Grzegorza: do uzupełnienia, jeśli go zmierzył).
+- **Czas SSH:** pierwsza próba Grzegorza po restarcie (timeout), druga udana ok. 12:04:33 UTC (kontenery „Up 11 seconds”), czyli ok. 45 s od polecenia (Grzegorz nie mierzył stoperem; wartość z pomiaru Claude Code (SSH ok. 45 s po poleceniu)).
 
 ### Migracja 011 (okno `ipc_reboot`)
 
@@ -113,7 +113,7 @@ Czyste zamknięcie (nie utrata zasilania). Czasy UTC, z dziennika systemu, `dock
 
 ## 11. Stan części A i dalej
 
-Część A zakończona. Do Grzegorza: zrzut z Grafany (np. dashboard „Jakość”, zakres 12:00–12:10 UTC) z adnotacją `ipc_reboot` i luką do dokumentacji (docs/images/etap2, nazwa wg dokumentu 04), oraz ewentualny czas ze stopera.
+Część A zakończona. Zrzuty z adnotacją `ipc_reboot` dostarczył Grzegorz: `docs/images/etap2/10-grafana-jakosc-v2-ipc-reboot.png` i `10b-grafana-jakosc-v2-thd-kat.png` (dodane do repo i do `etap-2.md`). **Część A zamknięta.**
 Część B (po 26.11 00:00 UTC; RAM po dobie od 25.11 11:58 UTC, więc najwcześniej 26.11 po 12:00 UTC): kompresja i rozmiar, RAM vs `mem_limit` z `memory.peak` i `oom_kill`, krok n4 (`reactive_neg_varh` 4800 → 4900), uzupełnienie `etap-2.md`.
 
 Stop: czekam na review architekta części A.

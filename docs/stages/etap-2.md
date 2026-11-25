@@ -38,7 +38,15 @@ Stany błędów (RS485 odłączony, PLC offline, zatrzymanie programu) **nie są
 
 ## Zrzuty ekranu (docs/images/etap2)
 
-01–09 wykonane. Stany błędów 20–29 nie zostały powtórzone w k8; są w dokumentacji z k5 (opisy i liczby), a brakujące zrzuty można dosłać opcjonalnie (nazewnictwo wg dokumentu 04).
+01–09 wykonane, a po teście restartu (25.11.2026):
+
+![Jakość energii, ostatnia godzina: adnotacja ipc_reboot ok. 13:04 czasu lokalnego](../images/etap2/10-grafana-jakosc-v2-ipc-reboot.png)
+
+Adnotacja `ipc_reboot` (pomarańczowy pas ok. 13:04) widoczna na wszystkich wykresach; luka trwa 37 s, więc na wykresach minutowych brak przerwy (kafelek „Z danymi U [min]” = 60 z 60 minut).
+
+![Jakość energii: THD U, THD I, kąt U–I, PF i cos φ po restarcie](../images/etap2/10b-grafana-jakosc-v2-thd-kat.png)
+
+Metryki mapy v2 (THD, kąt, PF, cos φ) liczone po restarcie bez zmian: PF ≈ 0,37, cos φ ≈ 0,63, kąt ok. −50°. Stany błędów 20–29 nie zostały powtórzone w k8; są w dokumentacji z k5 (opisy i liczby), a brakujące zrzuty można dosłać opcjonalnie (nazewnictwo wg dokumentu 04).
 
 ## Znane ograniczenia (nie blokują zamknięcia etapu 2)
 
