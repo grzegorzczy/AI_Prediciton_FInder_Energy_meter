@@ -34,6 +34,12 @@ def hourly_rows(conn):
     return names, cursor.fetchall()
 
 
+def rounded(rows):
+    """Sumy zmiennoprzecinkowe agregatu zależą od kolejności sumowania (równoległe wykonanie): różnią się w ostatniej cyfrze
+    (np. 4676772.487360175 i ...174). Porównujemy do 9 cyfr znaczących; liczby całkowite, NULL i czas muszą być identyczne (E2-k8c)."""
+    return [tuple(float(f"{v:.9g}") if isinstance(v, float) else v for v in row) for row in rows]
+
+
 def viewdefs(conn):
     return {name: conn.execute("SELECT pg_get_viewdef(%s::regclass, true)", (name,)).fetchone()[0]
             for name in ("energy_1h_calc", "energy_daily_check", "energy_1m_calc")}
@@ -57,10 +63,10 @@ def test_hourly_rows_are_identical_before_and_after_for_data_without_null_edges(
     with admin_connect(pg, fresh_db) as conn:
         after_names, after = hourly_rows(conn)
         assert after_names == before_names
-        assert after == before, "sumy i stany godzinowe muszą być identyczne przed i po odtworzeniu agregatu"
+        assert rounded(after) == rounded(before), "sumy i stany godzinowe muszą być identyczne przed i po odtworzeniu agregatu"
         assert viewdefs(conn) == defs_before                                       # widoki odtworzone identycznie
-        assert conn.execute("SELECT * FROM energy_daily_check ORDER BY day").fetchall() == daily_before
-        assert conn.execute("SELECT * FROM energy_1h_calc ORDER BY bucket").fetchall() == calc_before
+        assert rounded(conn.execute("SELECT * FROM energy_daily_check ORDER BY day").fetchall()) == rounded(daily_before)
+        assert rounded(conn.execute("SELECT * FROM energy_1h_calc ORDER BY bucket").fetchall()) == rounded(calc_before)
 
 
 def edge_data(conn):
