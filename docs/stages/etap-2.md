@@ -33,6 +33,8 @@ Polecenia wykonujesz z laptopa w cmd jako `ssh jumo@192.168.0.213 "<polecenie>"`
 | 15 | Kompresja i rozmiar bazy (**część B**, po 26.11 00:00 UTC) | liczby B/wiersz, MB/dobę, prognoza 90 dni i roku agregatów w `e2-k8b-report.md` | |
 | 16 | Konto czatu/Grafany tylko do odczytu: `psql` jako `app_reader` odrzuca `INSERT` | błąd „permission denied” (test `tests/db/test_roles.py`) | |
 
+Polecenia checklisty wykonał Claude Code na decyzję Grzegorza (25.11.2026); wyniki ocenili Grzegorz i architekt na podstawie surowych wydruków w e2-checklista-wyniki.md.
+
 Stany błędów (RS485 odłączony, PLC offline, zatrzymanie programu) **nie są powtarzane** – wykonane i opisane w `docs/handoff/e2-k5-report.md` (sekcje 6–8: liczby, okna, zachowanie `link_status`). Za k5 stoi też decyzja z 24.11, by nie wykonywać ich ponownie.
 *Opcjonalnie, jeśli chcesz powtórzyć:* odłącz na 10 s jeden przewód RS485 przy złączu „COM”; oczekiwane: `meter_status ≠ 0`, w bazie 5 wierszy na sekundę (zapytanie jak w pkt 7), po podłączeniu powrót do 20.
 
