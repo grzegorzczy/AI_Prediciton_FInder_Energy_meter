@@ -321,6 +321,9 @@ Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje prz
 | ingest lub baza niedostępne | kolejka sesji ingestu w Mosquitto (`max_queued_messages` 80 000, `max_queued_bytes` 20 MB) | ok. 66 minut przy 20 wiadomościach na sekundę (mapa v2; 102 minuty przy 13 na sekundę; wiąże liczba wiadomości) | **najnowsze** wiadomości (luka na końcu przerwy) |
 | ingest nie łączy się z brokerem dłużej niż 7 dni | `persistent_client_expiration 7d` w `mosquitto.conf` | 7 dni | broker usuwa sesję wraz z kolejką; od tej chwili wiadomości nie są kolejkowane, aż ingest znów się zasubskrybuje |
 
+**Pamięć Mosquitto przy pełnej kolejce:** po opublikowaniu 90 000 wiadomości QoS 1 do rozłączonej sesji trwałej (kolejka ucięta do 80 000) kontener `aip-mosquitto` zajmował
+36,8 MiB z limitu 64 MiB, bez OOM (pomiar 25.11.2026 w projekcie `aip-test`, sonda `tests/mqtt/probe_queue_memory.py`; na starcie 1,2 MiB).
+
 Ingest potwierdza wiadomość brokerowi dopiero po zapisie w bazie, więc awaria ingestu lub bazy nie gubi niczego w granicach
 kolejki sesji, a ponowne dostarczenie nie tworzy duplikatów (`ON CONFLICT DO NOTHING`). Przy niedostępnej bazie do ingestu
 dociera najwyżej 100 niepotwierdzonych wiadomości (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze. Dla
