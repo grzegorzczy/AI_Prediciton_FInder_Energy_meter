@@ -85,14 +85,25 @@ def test_heatmap_uses_one_value_scale_and_its_own_time_range():
     defaults = panel["fieldConfig"]["defaults"]
     assert defaults["color"]["mode"] == "continuous-blues" and defaults["min"] == 0 and defaults["max"] == 100
     assert defaults["custom"]["cellOptions"]["type"] == "color-background"
-    assert panel["timeFrom"] == "28d" and "28" in panel["title"]
+    assert "28" in panel["title"]
 
 
-def test_daily_panels_have_their_own_range():
-    """K7-V2: doby zawsze widoczne, niezależnie od zakresu pulpitu."""
-    for (name, title), panel in _panels().items():
-        if title.startswith(("Zużycie na dobę", "Kontrola całki mocy")):
-            assert panel["timeFrom"] == "14d", title
+def test_panels_with_their_own_range_do_not_depend_on_the_dashboard_range():
+    """K7C-V1 (k7d): własny zakres liczony w SQL od „teraz”. Nadpisanie `timeFrom` Grafana ignoruje przy bezwzględnym zakresie pulpitu."""
+    generator = load_generator()
+    panels = _panels()
+    assert set(generator.OWN_RANGE_PANELS) == {
+        ("energia", "Zużycie na dobę (ostatnie 14d)"), ("energia", "Profil: godzina × dzień tygodnia (ostatnie 28d)"),
+        ("energia", "Moc maks. profilu"), ("energia", "Kontrola całki mocy a licznik wzorcowy (doby, ostatnie 14d)")}
+    for key, marker in generator.OWN_RANGE_PANELS.items():
+        panel = panels[key]
+        for target in panel["targets"]:
+            sql = target["rawSql"]
+            assert generator.OWN_RANGE_MARKER[marker] in sql, key
+            assert "$__timeFilter" not in sql and "$__timeFrom" not in sql and "$__timeTo" not in sql, f"{key}: zależy od zakresu pulpitu"
+        assert "timeFrom" not in panel, f"{key}: nadpisanie timeFrom jest zawodne i zbędne"
+        assert "niezależnie od zakresu pulpitu" in panel["description"], key
+    assert panels[("energia", "Zużycie na dobę (ostatnie 14d)")]["type"] == "barchart"      # oś kategorii, nie czasu
 
 
 def test_in_progress_buckets_are_marked_and_not_counted_as_gaps():
@@ -178,9 +189,11 @@ def test_error_code_panel_shows_codes_only_during_errors_with_distinct_colours()
 def test_incomplete_minute_is_not_drawn_in_the_energy_line_and_coverage_series_are_named_alike():
     """W-3, W-4: jedna nazwa i definicja pokrycia upłynionej części dla minuty, godziny i doby."""
     generator = load_generator()
-    for key in (("energia", "Zużycie na minutę"), ("energia", "Zużycie na godzinę"), ("energia", "Zużycie na dobę (ostatnie 14d)")):
+    for key in (("energia", "Zużycie na minutę"), ("energia", "Zużycie na godzinę")):
         panel = _panels()[key]
         assert generator.PART in panel["targets"][0]["rawSql"] and generator.PART in panel["description"], key
+    daily = _panels()[("energia", "Zużycie na dobę (ostatnie 14d)")]        # doba: pokrycie w etykiecie słupka
+    assert "w toku" in daily["targets"][0]["rawSql"] and generator.PART.lower() in daily["description"]
     minute = _panels()[("energia", "Zużycie na minutę")]
     assert "THEN active_power_sum" in minute["targets"][0]["rawSql"]          # energia tylko dla pełnych minut
     assert minute["fieldConfig"]["defaults"]["unit"] == "suffix: Wh"           # bez mieszania mWh i Wh

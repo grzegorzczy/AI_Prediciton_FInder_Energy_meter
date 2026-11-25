@@ -122,3 +122,24 @@ def test_error_code_timeline_returns_to_no_error_after_each_episode(grafana_data
     assert set(values) == {0.0, 162.0}
     assert values[0] == 0.0 and values[-1] == 0.0          # zaczyna i kończy się „brakiem błędu”
     assert values.count(162.0) > 20 and values.count(0.0) > 20
+
+
+def test_own_range_panels_return_the_same_data_for_any_dashboard_range(grafana_data):
+    """k7d: panele z własnym zakresem (14 i 28 dni) dają ten sam wynik dla zakresu względnego i bezwzględnego z innej doby."""
+    from grafana_support import load_generator
+
+    generator = load_generator()
+    now = time.time()
+    ranges = [(now - 3 * 3600, now), (now - 30 * 86400, now - 29 * 86400), (now - 600, now)]       # względny i dwa bezwzględne
+    for (name, title), _ in generator.OWN_RANGE_PANELS.items():
+        panel = next(p for p in DASHES[name]["panels"] if p["title"] == title)
+        target = panel["targets"][0]
+        results = []
+        for start, end in ranges:
+            result = ds_query(expand_vars(target["rawSql"], M1), target["format"], start, end, target["refId"])
+            assert not result["error"], f"{title}: {result['error']}"
+            # kolumn czasu (np. `now()` w kafelkach) nie porównujemy: różnią się o milisekundy między wywołaniami
+            results.append([[v for field, v in zip(f["schema"]["fields"], f["data"]["values"]) if field.get("type") != "time"]
+                            for f in result["frames"]])
+        assert results[0] == results[1] == results[2], f"{title}: wynik zależy od zakresu pulpitu"
+        assert results[0] and results[0][0][0], f"{title}: brak danych"

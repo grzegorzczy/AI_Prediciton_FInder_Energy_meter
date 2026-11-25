@@ -439,6 +439,20 @@ WEEKDAYS = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Niedz"]
 PART = "Pokrycie upłynionej części (w toku)"      # jedna nazwa i definicja dla minuty, godziny i doby (K7c W-4)
 PROFILE_RANGE = "28d"
 DAYS_RANGE = "14d"
+PROFILE_DAYS, DAILY_DAYS = 28, 14
+# Własny zakres panelu liczony w SQL od „teraz”, a nie nadpisaniem `timeFrom`: Grafana stosuje `timeFrom` tylko przy WZGLĘDNYM zakresie pulpitu,
+# a przy bezwzględnym (np. po zaznaczeniu wykresu) go ignoruje, więc panele pokazywały godziny z zakresu pulpitu (K7C-V1, k7d).
+# Znacznik w SQL dla każdego takiego panelu (pilnuje go test): panel -> fragment zapytania.
+OWN_RANGE_MARKER = {
+    "daily": f"(now() AT TIME ZONE '{TZ}')::date - {DAILY_DAYS - 1}",
+    "profile": f"now() - interval '{PROFILE_DAYS} days'",
+}
+OWN_RANGE_PANELS = {            # (dashboard, tytuł) -> klucz znacznika
+    ("energia", f"Zużycie na dobę (ostatnie {DAYS_RANGE})"): "daily",
+    ("energia", f"Profil: godzina × dzień tygodnia (ostatnie {PROFILE_RANGE})"): "profile",
+    ("energia", "Moc maks. profilu"): "profile",
+    ("energia", f"Kontrola całki mocy a licznik wzorcowy (doby, ostatnie {DAYS_RANGE})"): "daily",
+}
 
 
 def _elapsed(bucket_expr: str, width: str) -> str:
@@ -450,7 +464,7 @@ def energy() -> Dash:
     d = new_dash("aip-energia", "Energia i profil",
                  "Zużycie energii z całki mocy (suma mocy z obecnych próbek × okres próbkowania) z pokryciem, profil godzinowo-tygodniowy, "
                  "porównania okresów, moc bazowa i kontrola zgodności z licznikiem wzorcowym. Luki nie są interpolowane: zużycie przy pokryciu poniżej 100% jest dolną granicą. "
-                 f"Panele „Zużycie na dobę”, profil i kontrola z licznikiem mają własny zakres czasu (ostatnie {DAYS_RANGE} i {PROFILE_RANGE}), niezależny od pulpitu.",
+                 f"Panele „Zużycie na dobę”, profil i kontrola z licznikiem mają własny zakres czasu (ostatnie {DAYS_RANGE} i {PROFILE_RANGE}, liczone od teraz), niezależny od zakresu pulpitu.",
                  time_from="now-7d")
     d.add(timeseries("Zużycie na minutę",
                      "Energia czynna [Wh] w każdej minucie (całka mocy, linia; niepełna, bieżąca minuta nie jest rysowana, żeby nie wyglądała na spadek zużycia) oraz pokrycie pełnych minut "
@@ -473,26 +487,25 @@ def energy() -> Dash:
                      overrides=[coverage_override("Pokrycie"), coverage_override(PART, dashed=True, style="points")]), 12, 8, new_row=True)
     day_len = f"extract(epoch FROM ((day + 1)::timestamp AT TIME ZONE '{TZ}') - (day::timestamp AT TIME ZONE '{TZ}'))"
     day_elapsed = f"extract(epoch FROM now() - (day::timestamp AT TIME ZONE '{TZ}'))"
-    d.add(timeseries(f"Zużycie na dobę (ostatnie {DAYS_RANGE})",
-                     "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) i pokrycie doby pomiarem (żółte punkty po prawej). Pomarańczowy punkt „" + PART + "” (doba w toku) to pokrycie samej upłyniętej części doby, a nie całej doby. "
-                     f"Panel ma własny zakres: ostatnie {DAYS_RANGE}, niezależnie od pulpitu.",
-                     [target(f"SELECT day::timestamp AT TIME ZONE '{TZ}' AS time, integral_wh AS \"Energia [Wh]\", "
-                             f"CASE WHEN day_complete THEN coverage END AS \"Pokrycie\", "
-                             f"CASE WHEN NOT day_complete THEN least(1.0, coverage * {day_len} / greatest({day_elapsed}, 1)) END AS \"{PART}\" "
-                             f"FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY 1")],
-                     unit="watth", bars=True, span_ms=200000000, decimals=1, min_=0, time_from=DAYS_RANGE,
-                     overrides=[coverage_override("Pokrycie", style="points"), coverage_override(PART, dashed=True, style="points")]), 12, 8)
+    d.add(barchart(f"Zużycie na dobę (ostatnie {DAYS_RANGE})",
+                   "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) z pomiarów (dolna granica przy braku pokrycia). W nawiasie pod słupkiem: pokrycie doby pomiarem; "
+                   "dla doby w toku „w toku” i " + PART.lower() + " (samej upłyniętej części doby, nie całej doby). "
+                   f"Zakres: ostatnie {DAYS_RANGE} liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
+                   [target(f"SELECT to_char(day, 'DD.MM') || CASE WHEN day_complete THEN ' (' || coalesce(round(coverage * 100)::text, '?') || '%)' "
+                           f"ELSE ' (w toku, ' || coalesce(round(least(1.0, coverage * {day_len} / greatest({day_elapsed}, 1)) * 100)::text, '?') || '%)' END "
+                           f"AS \"Doba (pokrycie)\", integral_wh AS \"Energia [Wh]\" FROM energy_daily_check "
+                           f"WHERE {DEV} AND day >= {OWN_RANGE_MARKER['daily']} ORDER BY day", "table")],
+                   unit="watth", decimals=1, min_=0), 12, 8)
     grouped = (f"SELECT extract(hour FROM bucket AT TIME ZONE '{TZ}')::int AS hour, extract(isodow FROM bucket AT TIME ZONE '{TZ}')::int AS dow, "
-               f"sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1, 2")
+               f"sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE bucket >= {OWN_RANGE_MARKER['profile']} AND {DEV} GROUP BY 1, 2")
     cols = ", ".join(f"max(p) FILTER (WHERE dow = {i + 1}) AS \"{name}\"" for i, name in enumerate(WEEKDAYS))
     d.add(table(f"Profil: godzina × dzień tygodnia (ostatnie {PROFILE_RANGE})",
-                f"Średnia moc czynna dla każdej godziny doby (czas lokalny) i dnia tygodnia w ostatnich {PROFILE_RANGE} (własny zakres panelu, z agregatu godzinnego), "
+                f"Średnia moc czynna dla każdej godziny doby (czas lokalny) i dnia tygodnia w ostatnich {PROFILE_RANGE} (liczone od teraz, niezależnie od zakresu pulpitu, także bezwzględnego; z agregatu godzinnego), "
                 "jako **procent największej średniej mocy w profilu** (100% = wartość z kafelka obok). Jedna wspólna, jednobarwna skala od jasnoniebieskiego (mało) do ciemnoniebieskiego (dużo): "
                 "to profil zużycia, nie ocena dobrze/źle. Pusta, przezroczysta komórka bez liczby oznacza brak danych.",
                 [target(f"SELECT hour AS \"Godzina\", {cols} FROM (SELECT hour, dow, 100.0 * w / nullif(max(w) OVER (), 0) AS p FROM ({grouped}) g) n "
                         "GROUP BY hour ORDER BY hour", "table")],
                 custom={"cellOptions": {"type": "color-background", "mode": "gradient"}}, decimals=0, unit="percent", min_=0, max_=100,
-                time_from=PROFILE_RANGE,
                 overrides=[{"matcher": {"id": "byName", "options": "Godzina"},
                             "properties": [{"id": "custom.cellOptions", "value": {"type": "auto"}}, {"id": "unit", "value": "none"},
                                            {"id": "color", "value": {"mode": "fixed", "fixedColor": "text"}}]}]), 18, 12, new_row=True)
@@ -500,9 +513,9 @@ def energy() -> Dash:
     d.panels[-1]["fieldConfig"]["defaults"]["mappings"] = [{"type": "special", "options": {
         "match": "null+nan", "result": {"text": "", "color": "transparent", "index": 0}}}]
     d.add(stat("Moc maks. profilu",
-               f"Największa średnia moc godzinowa w profilu obok (ostatnie {PROFILE_RANGE}) [W]: to jest 100% skali kolorów.",
+               f"Największa średnia moc godzinowa w profilu obok (ostatnie {PROFILE_RANGE}, liczone od teraz niezależnie od zakresu pulpitu) [W]: to jest 100% skali kolorów.",
                [target(f"SELECT now() AS time, max(w) AS \"Maks. średnia moc\" FROM ({grouped}) g", "table")], unit="watt", decimals=1,
-               time_from=PROFILE_RANGE, color_mode="none"), 6, 12)
+               color_mode="none"), 6, 12)
     d.add(timeseries("Moc: bieżący zakres a poprzednia doba",
                      "Średnia moc czynna [W] w wybranym zakresie czasu oraz ta sama wielkość sprzed 24 godzin (przesunięta na oś bieżącego zakresu).",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" "
@@ -532,13 +545,13 @@ def energy() -> Dash:
                 "Ekstrap. = całka uzupełniona do pełnej doby (całka / pokrycie), Rozdz. = rozdzielczość licznika, W rozdz. = różnica nie większa niż jeden krok licznika, "
                 "Luki = godziny po luce w danych. Licznik zmienia stan co 100 Wh, więc przy małym "
                 "obciążeniu przyrost dobowy to 1–2 kroki: główną miarą zgodności jest „W granicach rozdzielczości”, a odchyłka procentowa jest podawana tylko przy "
-                f"przyroście co najmniej 5 kroków licznika. Panel ma własny zakres: ostatnie {DAYS_RANGE}.",
+                f"przyroście co najmniej 5 kroków licznika. Zakres: ostatnie {DAYS_RANGE} liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
                 [target(f"SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie doby\", counter_delta_wh AS \"Licznik [Wh]\", "
                         "integral_extrapolated_wh AS \"Ekstrap. [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdz. [Wh]\", "
                         "within_resolution AS \"W rozdz.\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Zakończona\", "
-                        f"gap_before_count AS \"Luki\" FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' "
-                        "BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY day DESC", "table")], decimals=1,
-                time_from=DAYS_RANGE, custom={"minWidth": 50, "align": "right"},
+                        f"gap_before_count AS \"Luki\" FROM energy_daily_check WHERE {DEV} AND day >= {OWN_RANGE_MARKER['daily']} "
+                        "ORDER BY day DESC", "table")], decimals=1,
+                custom={"minWidth": 50, "align": "right"},
                 overrides=[{"matcher": {"id": "byName", "options": "Pokrycie doby"}, "properties": [{"id": "unit", "value": "percentunit"}]}]),
           24, 8, new_row=True)
     return d

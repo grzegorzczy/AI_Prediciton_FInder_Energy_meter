@@ -23,7 +23,7 @@
       }
     ]
   },
-  "description": "Zużycie energii z całki mocy (suma mocy z obecnych próbek × okres próbkowania) z pokryciem, profil godzinowo-tygodniowy, porównania okresów, moc bazowa i kontrola zgodności z licznikiem wzorcowym. Luki nie są interpolowane: zużycie przy pokryciu poniżej 100% jest dolną granicą. Panele „Zużycie na dobę”, profil i kontrola z licznikiem mają własny zakres czasu (ostatnie 14d i 28d), niezależny od pulpitu.",
+  "description": "Zużycie energii z całki mocy (suma mocy z obecnych próbek × okres próbkowania) z pokryciem, profil godzinowo-tygodniowy, porównania okresów, moc bazowa i kontrola zgodności z licznikiem wzorcowym. Luki nie są interpolowane: zużycie przy pokryciu poniżej 100% jest dolną granicą. Panele „Zużycie na dobę”, profil i kontrola z licznikiem mają własny zakres czasu (ostatnie 14d i 28d, liczone od teraz), niezależny od zakresu pulpitu.",
   "editable": true,
   "graphTooltip": 1,
   "links": [
@@ -382,114 +382,20 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) i pokrycie doby pomiarem (żółte punkty po prawej). Pomarańczowy punkt „Pokrycie upłynionej części (w toku)” (doba w toku) to pokrycie samej upłyniętej części doby, a nie całej doby. Panel ma własny zakres: ostatnie 14d, niezależnie od pulpitu.",
+      "description": "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) z pomiarów (dolna granica przy braku pokrycia). W nawiasie pod słupkiem: pokrycie doby pomiarem; dla doby w toku „w toku” i pokrycie upłynionej części (w toku) (samej upłyniętej części doby, nie całej doby). Zakres: ostatnie 14d liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "barAlignment": 1,
-            "drawStyle": "bars",
-            "fillOpacity": 60,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": 200000000
+            "fillOpacity": 80
           },
           "decimals": 1,
           "min": 0,
           "unit": "watth"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Pokrycie"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
-              {
-                "id": "custom.drawStyle",
-                "value": "points"
-              },
-              {
-                "id": "min",
-                "value": 0
-              },
-              {
-                "id": "max",
-                "value": 1
-              },
-              {
-                "id": "custom.fillOpacity",
-                "value": 0
-              },
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Pokrycie upłynionej części (w toku)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
-              {
-                "id": "custom.drawStyle",
-                "value": "points"
-              },
-              {
-                "id": "min",
-                "value": 0
-              },
-              {
-                "id": "max",
-                "value": 1
-              },
-              {
-                "id": "custom.fillOpacity",
-                "value": 0
-              },
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "dash": [
-                    6,
-                    6
-                  ],
-                  "fill": "dash"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -497,18 +403,18 @@
         "x": 12,
         "y": 8
       },
-      "hideTimeOverride": false,
       "id": 3,
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "showLegend": false
         },
+        "orientation": "vertical",
+        "showValue": "never",
+        "stacking": "none",
         "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
+          "mode": "single"
+        },
+        "xTickLabelRotation": -45
       },
       "targets": [
         {
@@ -517,23 +423,22 @@
             "uid": "aip-timescaledb"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT day::timestamp AT TIME ZONE 'Europe/Warsaw' AS time, integral_wh AS \"Energia [Wh]\", CASE WHEN day_complete THEN coverage END AS \"Pokrycie\", CASE WHEN NOT day_complete THEN least(1.0, coverage * extract(epoch FROM ((day + 1)::timestamp AT TIME ZONE 'Europe/Warsaw') - (day::timestamp AT TIME ZONE 'Europe/Warsaw')) / greatest(extract(epoch FROM now() - (day::timestamp AT TIME ZONE 'Europe/Warsaw')), 1)) END AS \"Pokrycie upłynionej części (w toku)\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY 1",
+          "rawSql": "SELECT to_char(day, 'DD.MM') || CASE WHEN day_complete THEN ' (' || coalesce(round(coverage * 100)::text, '?') || '%)' ELSE ' (w toku, ' || coalesce(round(least(1.0, coverage * extract(epoch FROM ((day + 1)::timestamp AT TIME ZONE 'Europe/Warsaw') - (day::timestamp AT TIME ZONE 'Europe/Warsaw')) / greatest(extract(epoch FROM now() - (day::timestamp AT TIME ZONE 'Europe/Warsaw')), 1)) * 100)::text, '?') || '%)' END AS \"Doba (pokrycie)\", integral_wh AS \"Energia [Wh]\" FROM energy_daily_check WHERE device_id = '$device' AND day >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 13 ORDER BY day",
           "refId": "A"
         }
       ],
-      "timeFrom": "14d",
       "title": "Zużycie na dobę (ostatnie 14d)",
-      "type": "timeseries"
+      "type": "barchart"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Średnia moc czynna dla każdej godziny doby (czas lokalny) i dnia tygodnia w ostatnich 28d (własny zakres panelu, z agregatu godzinnego), jako **procent największej średniej mocy w profilu** (100% = wartość z kafelka obok). Jedna wspólna, jednobarwna skala od jasnoniebieskiego (mało) do ciemnoniebieskiego (dużo): to profil zużycia, nie ocena dobrze/źle. Pusta, przezroczysta komórka bez liczby oznacza brak danych.",
+      "description": "Średnia moc czynna dla każdej godziny doby (czas lokalny) i dnia tygodnia w ostatnich 28d (liczone od teraz, niezależnie od zakresu pulpitu, także bezwzględnego; z agregatu godzinnego), jako **procent największej średniej mocy w profilu** (100% = wartość z kafelka obok). Jedna wspólna, jednobarwna skala od jasnoniebieskiego (mało) do ciemnoniebieskiego (dużo): to profil zużycia, nie ocena dobrze/źle. Pusta, przezroczysta komórka bez liczby oznacza brak danych.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -597,7 +502,6 @@
         "x": 0,
         "y": 16
       },
-      "hideTimeOverride": false,
       "id": 4,
       "options": {
         "cellHeight": "sm",
@@ -613,11 +517,10 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT hour AS \"Godzina\", max(p) FILTER (WHERE dow = 1) AS \"Pon\", max(p) FILTER (WHERE dow = 2) AS \"Wt\", max(p) FILTER (WHERE dow = 3) AS \"Śr\", max(p) FILTER (WHERE dow = 4) AS \"Czw\", max(p) FILTER (WHERE dow = 5) AS \"Pt\", max(p) FILTER (WHERE dow = 6) AS \"Sob\", max(p) FILTER (WHERE dow = 7) AS \"Niedz\" FROM (SELECT hour, dow, 100.0 * w / nullif(max(w) OVER (), 0) AS p FROM (SELECT extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS hour, extract(isodow FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS dow, sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1, 2) g) n GROUP BY hour ORDER BY hour",
+          "rawSql": "SELECT hour AS \"Godzina\", max(p) FILTER (WHERE dow = 1) AS \"Pon\", max(p) FILTER (WHERE dow = 2) AS \"Wt\", max(p) FILTER (WHERE dow = 3) AS \"Śr\", max(p) FILTER (WHERE dow = 4) AS \"Czw\", max(p) FILTER (WHERE dow = 5) AS \"Pt\", max(p) FILTER (WHERE dow = 6) AS \"Sob\", max(p) FILTER (WHERE dow = 7) AS \"Niedz\" FROM (SELECT hour, dow, 100.0 * w / nullif(max(w) OVER (), 0) AS p FROM (SELECT extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS hour, extract(isodow FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS dow, sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE bucket >= now() - interval '28 days' AND device_id = '$device' GROUP BY 1, 2) g) n GROUP BY hour ORDER BY hour",
           "refId": "A"
         }
       ],
-      "timeFrom": "28d",
       "title": "Profil: godzina × dzień tygodnia (ostatnie 28d)",
       "type": "table"
     },
@@ -626,7 +529,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Największa średnia moc godzinowa w profilu obok (ostatnie 28d) [W]: to jest 100% skali kolorów.",
+      "description": "Największa średnia moc godzinowa w profilu obok (ostatnie 28d, liczone od teraz niezależnie od zakresu pulpitu) [W]: to jest 100% skali kolorów.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -643,7 +546,6 @@
         "x": 18,
         "y": 16
       },
-      "hideTimeOverride": false,
       "id": 5,
       "options": {
         "colorMode": "none",
@@ -668,11 +570,10 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT now() AS time, max(w) AS \"Maks. średnia moc\" FROM (SELECT extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS hour, extract(isodow FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS dow, sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1, 2) g",
+          "rawSql": "SELECT now() AS time, max(w) AS \"Maks. średnia moc\" FROM (SELECT extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS hour, extract(isodow FROM bucket AT TIME ZONE 'Europe/Warsaw')::int AS dow, sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE bucket >= now() - interval '28 days' AND device_id = '$device' GROUP BY 1, 2) g",
           "refId": "A"
         }
       ],
-      "timeFrom": "28d",
       "title": "Moc maks. profilu",
       "type": "stat"
     },
@@ -883,7 +784,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Dla każdej doby lokalnej: energia z całki mocy, pokrycie doby, przyrost licznika wzorcowego i różnica. Skróty: Licznik = przyrost licznika wzorcowego, Ekstrap. = całka uzupełniona do pełnej doby (całka / pokrycie), Rozdz. = rozdzielczość licznika, W rozdz. = różnica nie większa niż jeden krok licznika, Luki = godziny po luce w danych. Licznik zmienia stan co 100 Wh, więc przy małym obciążeniu przyrost dobowy to 1–2 kroki: główną miarą zgodności jest „W granicach rozdzielczości”, a odchyłka procentowa jest podawana tylko przy przyroście co najmniej 5 kroków licznika. Panel ma własny zakres: ostatnie 14d.",
+      "description": "Dla każdej doby lokalnej: energia z całki mocy, pokrycie doby, przyrost licznika wzorcowego i różnica. Skróty: Licznik = przyrost licznika wzorcowego, Ekstrap. = całka uzupełniona do pełnej doby (całka / pokrycie), Rozdz. = rozdzielczość licznika, W rozdz. = różnica nie większa niż jeden krok licznika, Luki = godziny po luce w danych. Licznik zmienia stan co 100 Wh, więc przy małym obciążeniu przyrost dobowy to 1–2 kroki: główną miarą zgodności jest „W granicach rozdzielczości”, a odchyłka procentowa jest podawana tylko przy przyroście co najmniej 5 kroków licznika. Zakres: ostatnie 14d liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -917,7 +818,6 @@
         "x": 0,
         "y": 44
       },
-      "hideTimeOverride": false,
       "id": 9,
       "options": {
         "cellHeight": "sm",
@@ -933,11 +833,10 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie doby\", counter_delta_wh AS \"Licznik [Wh]\", integral_extrapolated_wh AS \"Ekstrap. [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdz. [Wh]\", within_resolution AS \"W rozdz.\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Zakończona\", gap_before_count AS \"Luki\" FROM energy_daily_check WHERE device_id = '$device' AND day::timestamp AT TIME ZONE 'Europe/Warsaw' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY day DESC",
+          "rawSql": "SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie doby\", counter_delta_wh AS \"Licznik [Wh]\", integral_extrapolated_wh AS \"Ekstrap. [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdz. [Wh]\", within_resolution AS \"W rozdz.\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Zakończona\", gap_before_count AS \"Luki\" FROM energy_daily_check WHERE device_id = '$device' AND day >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 13 ORDER BY day DESC",
           "refId": "A"
         }
       ],
-      "timeFrom": "14d",
       "title": "Kontrola całki mocy a licznik wzorcowy (doby, ostatnie 14d)",
       "type": "table"
     }
