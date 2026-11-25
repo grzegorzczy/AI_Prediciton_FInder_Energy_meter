@@ -22,7 +22,6 @@ SENTINEL_ONLY = {
 }
 # Zakresy, w których z definicji danych może nie być odpowiednich próbek.
 MAY_BE_EMPTY = {
-    ("Moc bazowa (5. percentyl nocą)", "15m"), ("Moc bazowa (5. percentyl nocą)", "6h"),
     ("Sekundy bez pomiaru mocy na godzinę", "15m"),
     ("Zużycie na godzinę", "15m"), ("Zużycie na minutę", "15m"),
     ("Kod błędu komunikacji PLC–licznik (meter_error_code)", "7d"),
@@ -229,3 +228,24 @@ def test_state_timeline_resumes_after_a_gap_without_a_change_of_state(grafana_da
         if value == no_data:
             assert position + 1 < len(values) and values[position + 1] != no_data, f"{title}: po „Brak danych” nie wraca stan"
     assert values[-1] != no_data, f"{title}: oś kończy się w „Brak danych” mimo płynących danych"
+
+
+def test_reactive_daily_labels_are_not_numbers_and_base_power_has_nights_for_a_short_range(grafana_data):
+    """K8-V5: żadna etykieta doby nie daje się odczytać jako liczba; K8-V6: moc bazowa ma słupki przy zakresie 15 minut."""
+    now = time.time()
+    panel = next(p for p in DASHES["energia"]["panels"] if p["title"].startswith("Energia bierna na dobę"))
+    target = panel["targets"][0]
+    result = ds_query(expand_vars(target["rawSql"], M1), target["format"], now - 900, now, target["refId"])
+    assert not result["error"], result["error"]
+    labels = result["frames"][0]["data"]["values"][0]
+    assert len(labels) >= 10
+    for label in labels:
+        with pytest.raises(ValueError):
+            float(label)
+        assert label[-3:].strip() and label[2] == "." and label[5] == " ", label
+    base = next(p for p in DASHES["energia"]["panels"] if p["title"].startswith("Moc bazowa"))
+    result = ds_query(expand_vars(base["targets"][0]["rawSql"], M1), "table", now - 900, now)
+    assert not result["error"], result["error"]
+    names = result["frames"][0]["data"]["values"][0]
+    values = result["frames"][0]["data"]["values"][1]
+    assert 10 <= len(names) <= 15 and all(v is not None and v > 0 for v in values), (len(names), values)

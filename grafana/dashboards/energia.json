@@ -445,10 +445,12 @@
             "mode": "continuous-blues"
           },
           "custom": {
+            "align": "center",
             "cellOptions": {
               "mode": "gradient",
               "type": "color-background"
-            }
+            },
+            "minWidth": 40
           },
           "decimals": 0,
           "mappings": [
@@ -724,19 +726,14 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Moc bazowa doby: 5. percentyl średniej minutowej mocy czynnej [W] w godzinach lokalnych 00:00–05:00 (obciążenie tła, gdy maszyny nie pracują). Jedna wartość na dobę lokalną.",
+      "description": "Moc bazowa doby: 5. percentyl średniej minutowej mocy czynnej [W] w godzinach lokalnych 00:00–05:00 (obciążenie tła, gdy maszyny nie pracują). Jedna wartość na dobę lokalną. Zakres: ostatnie 14 nocy liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego): przy krótkim zakresie (np. 1 godzina) nie ma nocy, więc panel o zakresie pulpitu byłby pusty.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "barAlignment": 1,
-            "drawStyle": "bars",
-            "fillOpacity": 60,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": 200000000
+            "fillOpacity": 80
           },
           "decimals": 2,
           "min": 0,
@@ -753,14 +750,15 @@
       "id": 8,
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "showLegend": false
         },
+        "orientation": "vertical",
+        "showValue": "never",
+        "stacking": "none",
         "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
+          "mode": "single"
+        },
+        "xTickLabelRotation": -45
       },
       "targets": [
         {
@@ -769,15 +767,15 @@
             "uid": "aip-timescaledb"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT (bucket AT TIME ZONE 'Europe/Warsaw')::date::timestamp AT TIME ZONE 'Europe/Warsaw' AS time, percentile_cont(0.05) WITHIN GROUP (ORDER BY active_power_sum / active_power_n) AS \"Moc bazowa\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND active_power_n > 0 AND extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw') < 5 GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT to_char((bucket AT TIME ZONE 'Europe/Warsaw')::date, 'DD.MM') || ' ' || CASE extract(isodow FROM (bucket AT TIME ZONE 'Europe/Warsaw')::date)::int WHEN 1 THEN 'Pon' WHEN 2 THEN 'Wt' WHEN 3 THEN 'Śr' WHEN 4 THEN 'Czw' WHEN 5 THEN 'Pt' WHEN 6 THEN 'Sob' WHEN 7 THEN 'Niedz' END AS \"Noc (doba)\", percentile_cont(0.05) WITHIN GROUP (ORDER BY active_power_sum / active_power_n) AS \"Moc bazowa [W]\" FROM energy_1m WHERE (bucket AT TIME ZONE 'Europe/Warsaw')::date >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 13 AND device_id = '$device' AND active_power_n > 0 AND extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw') < 5 GROUP BY (bucket AT TIME ZONE 'Europe/Warsaw')::date ORDER BY (bucket AT TIME ZONE 'Europe/Warsaw')::date",
           "refId": "A"
         }
       ],
-      "title": "Moc bazowa (5. percentyl nocą)",
-      "type": "timeseries"
+      "title": "Moc bazowa (5. percentyl nocą, ostatnie 14 nocy)",
+      "type": "barchart"
     },
     {
       "datasource": {
@@ -844,7 +842,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Energia bierna [varh] w dobie lokalnej: całka mocy biernej (Q > 0 i |Q| przy Q < 0) oraz przyrost liczników n2 (Q > 0) i n4 (Q < 0). Przyrost liczy zapytanie z agregatu godzinnego z zapasem 3 dni wstecz (jak widok reactive_1h_calc, ale bez przeglądania całej historii). Licznik zmienia stan co 100 varh, a przy Q ≈ −9 var to jeden krok na ok. 11 godzin, więc przyrost dobowy to 0, 100 lub 200: brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero). Zakres: ostatnie 14d liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
+      "description": "Energia bierna [varh] w dobie lokalnej: całka mocy biernej (Q > 0 i |Q| przy Q < 0) oraz przyrost liczników n2 (Q > 0) i n4 (Q < 0). Przyrost liczy zapytanie z agregatu godzinnego z zapasem 3 dni wstecz (jak widok reactive_1h_calc, ale bez przeglądania całej historii). Licznik zmienia stan co 100 varh, a przy Q ≈ −9 var to jeden krok na ok. 11 godzin, więc przyrost dobowy to 0, 100 lub 200: brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero): dane licznika są od 25.11.2026 10:43 UTC, a do pierwszego kroku licznika n4 (co 100 varh) seria licznika jest pusta lub zerowa, co nie oznacza błędu. Zakres: ostatnie 14d liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -889,7 +887,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH h AS (SELECT bucket, counter_pos_first AS pf, counter_pos_last AS pl, counter_neg_first AS nf, counter_neg_last AS nl, reactive_pos_sum, reactive_neg_sum FROM energy_ext_1h WHERE device_id = '$device' AND bucket >= now() - interval '17 days'), pos AS (SELECT bucket, pf, pl, lag(pl) OVER (ORDER BY bucket) AS prev FROM h WHERE pl IS NOT NULL), neg AS (SELECT bucket, nf, nl, lag(nl) OVER (ORDER BY bucket) AS prev FROM h WHERE nl IS NOT NULL) SELECT to_char(day, 'DD.MM') AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM (SELECT (h.bucket AT TIME ZONE 'Europe/Warsaw')::date AS day, sum(h.reactive_pos_sum) * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS pos_int, -sum(h.reactive_neg_sum) * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS neg_int, sum(CASE WHEN p.pl IS NULL THEN NULL WHEN p.prev IS NULL THEN p.pl - p.pf WHEN p.pl < p.prev THEN p.pl ELSE p.pl - p.prev END) AS pos_delta, sum(CASE WHEN n.nl IS NULL THEN NULL WHEN n.prev IS NULL THEN n.nl - n.nf WHEN n.nl < n.prev THEN n.nl ELSE n.nl - n.prev END) AS neg_delta FROM h LEFT JOIN pos p ON p.bucket = h.bucket LEFT JOIN neg n ON n.bucket = h.bucket WHERE (h.bucket AT TIME ZONE 'Europe/Warsaw')::date >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 13 GROUP BY 1) g ORDER BY day",
+          "rawSql": "WITH h AS (SELECT bucket, counter_pos_first AS pf, counter_pos_last AS pl, counter_neg_first AS nf, counter_neg_last AS nl, reactive_pos_sum, reactive_neg_sum FROM energy_ext_1h WHERE device_id = '$device' AND bucket >= now() - interval '17 days'), pos AS (SELECT bucket, pf, pl, lag(pl) OVER (ORDER BY bucket) AS prev FROM h WHERE pl IS NOT NULL), neg AS (SELECT bucket, nf, nl, lag(nl) OVER (ORDER BY bucket) AS prev FROM h WHERE nl IS NOT NULL) SELECT to_char(day, 'DD.MM') || ' ' || CASE extract(isodow FROM day)::int WHEN 1 THEN 'Pon' WHEN 2 THEN 'Wt' WHEN 3 THEN 'Śr' WHEN 4 THEN 'Czw' WHEN 5 THEN 'Pt' WHEN 6 THEN 'Sob' WHEN 7 THEN 'Niedz' END AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM (SELECT (h.bucket AT TIME ZONE 'Europe/Warsaw')::date AS day, sum(h.reactive_pos_sum) * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS pos_int, -sum(h.reactive_neg_sum) * (SELECT (meta ->> 'poll_interval_s')::float8 FROM devices WHERE device_id = '$device') / 3600.0 AS neg_int, sum(CASE WHEN p.pl IS NULL THEN NULL WHEN p.prev IS NULL THEN p.pl - p.pf WHEN p.pl < p.prev THEN p.pl ELSE p.pl - p.prev END) AS pos_delta, sum(CASE WHEN n.nl IS NULL THEN NULL WHEN n.prev IS NULL THEN n.nl - n.nf WHEN n.nl < n.prev THEN n.nl ELSE n.nl - n.prev END) AS neg_delta FROM h LEFT JOIN pos p ON p.bucket = h.bucket LEFT JOIN neg n ON n.bucket = h.bucket WHERE (h.bucket AT TIME ZONE 'Europe/Warsaw')::date >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 13 GROUP BY 1) g ORDER BY day",
           "refId": "A"
         }
       ],

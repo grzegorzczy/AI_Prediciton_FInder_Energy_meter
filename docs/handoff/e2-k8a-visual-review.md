@@ -40,3 +40,25 @@ i godziny epizodów (nowe serie? E2-PLC1). Wynik do raportu – tylko opis.
 
 k8c (bez osobnego planu): K8-V1…V4, testy, wdrożenie R-1, raport `e2-k8c-report.md`. Potem Grzegorz robi
 zrzut 07 (Diagnostyka) i zrzuty Energii i profilu (06, 06b, 06c, energia bierna).
+
+## Dopisek 13:40 – Energia i profil (zrzuty 06, 06b, 06c, zakres „Ostatnia godzina”)
+
+Potwierdzone: profil godzinowy niebieski, puste godziny zaniku przezroczyste; porównania mocy z 2 miejscami
+po przecinku; „Zużycie na dobę” jako słupki z etykietą „DD.MM (xx%)”; tabela kontrolna bez przewijania;
+energia bierna z całki Q (godzina 13:00 ok. 5 varh przy Q ≈ −8,5 var – zgodne); spadki „Zużycia na minutę”
+o 12:58 (wdrożenie) i 13:04 (restart) z widocznym spadkiem pokrycia – poprawne zachowanie.
+
+**K8-V5 – „Energia bierna na dobę: całka i licznik”: zepsute etykiety osi.** Kategorie pokazują się jako
+„23.1 varh”, „24.1 varh”, „25.1 varh” zamiast „23.11”, „24.11”, „25.11” – etykieta doby jest traktowana jak liczba
+i dostaje jednostkę. Etykieta jako tekst (jak w „Zużyciu na dobę”), jednostka tylko na osi wartości.
+Seria licznika (n2/n4) jest pusta, bo dane v2 są od 25.11 10:43 i n4 jeszcze nie zrobiło kroku – opisać to w panelu.
+
+**K8-V6 – „Moc bazowa (5. percentyl nocą)” pokazuje „Brak danych” przy krótkich zakresach.** Przy zakresie
+1 h nie ma nocy, więc panel jest pusty. Własny zakres liczony w SQL (jak w k7d), np. ostatnie 14 nocy, niezależnie
+od zakresu pulpitu; w tytule „(ostatnie 14 nocy)”.
+
+**K8-V7 – „Profil: godzina × dzień tygodnia”: poziomy pasek przewijania, kolumna „Niedz” ucięta.**
+Wszystkie 7 dni ma się mieścić bez przewijania w poziomie (szerokości kolumn albo szerszy panel kosztem kafelka
+„Moc maks. profilu”).
+
+Drobne, bez zmian: „Zużycie na godzinę” przy zakresie 1 h pokazuje praktycznie jeden słupek – to wynika z zakresu.

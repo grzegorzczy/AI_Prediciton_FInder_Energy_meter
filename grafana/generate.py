@@ -487,6 +487,7 @@ PART = "Pokrycie upłynionej części (w toku)"      # jedna nazwa i definicja d
 PROFILE_RANGE = "28d"
 DAYS_RANGE = "14d"
 PROFILE_DAYS, DAILY_DAYS = 28, 14
+BASE_NIGHTS = 14                 # ostatnie noce w panelu mocy bazowej (K8-V6), zakres jak doby
 # Własny zakres panelu liczony w SQL od „teraz”, a nie nadpisaniem `timeFrom`: Grafana stosuje `timeFrom` tylko przy WZGLĘDNYM zakresie pulpitu,
 # a przy bezwzględnym (np. po zaznaczeniu wykresu) go ignoruje, więc panele pokazywały godziny z zakresu pulpitu (K7C-V1, k7d).
 # Znacznik w SQL dla każdego takiego panelu (pilnuje go test): panel -> fragment zapytania.
@@ -500,7 +501,15 @@ OWN_RANGE_PANELS = {            # (dashboard, tytuł) -> klucz znacznika
     ("energia", "Moc maks. profilu"): "profile",
     ("energia", f"Kontrola całki mocy a licznik wzorcowy (doby, ostatnie {DAYS_RANGE})"): "daily",
     ("energia", f"Energia bierna na dobę: całka i licznik (ostatnie {DAYS_RANGE})"): "daily",
+    ("energia", f"Moc bazowa (5. percentyl nocą, ostatnie {BASE_NIGHTS} nocy)"): "daily",
 }
+
+
+# Etykieta doby jako TEKST (K8-V5): samo "23.11" Grafana odczytywala jako liczbe 23,11 i dopisywala jednostke osi wartosci ("23.1 varh").
+# Skrot dnia tygodnia (jak w profilu) czyni etykiete jednoznacznie tekstowa i dodaje informacje.
+def _day_label(day_expr: str) -> str:
+    names = " ".join(f"WHEN {i + 1} THEN '{name}'" for i, name in enumerate(WEEKDAYS))
+    return f"to_char({day_expr}, 'DD.MM') || ' ' || CASE extract(isodow FROM {day_expr})::int {names} END"
 
 
 def _elapsed(bucket_expr: str, width: str) -> str:
@@ -553,7 +562,8 @@ def energy() -> Dash:
                 "to profil zużycia, nie ocena dobrze/źle. Pusta, przezroczysta komórka bez liczby oznacza brak danych.",
                 [target(f"SELECT hour AS \"Godzina\", {cols} FROM (SELECT hour, dow, 100.0 * w / nullif(max(w) OVER (), 0) AS p FROM ({grouped}) g) n "
                         "GROUP BY hour ORDER BY hour", "table")],
-                custom={"cellOptions": {"type": "color-background", "mode": "gradient"}}, decimals=0, unit="percent", min_=0, max_=100,
+                custom={"cellOptions": {"type": "color-background", "mode": "gradient"}, "minWidth": 40, "align": "center"},   # 8 kolumn bez przewijania (K8-V7)
+                decimals=0, unit="percent", min_=0, max_=100,
                 overrides=[{"matcher": {"id": "byName", "options": "Godzina"},
                             "properties": [{"id": "custom.cellOptions", "value": {"type": "auto"}}, {"id": "unit", "value": "none"},
                                            {"id": "color", "value": {"mode": "fixed", "fixedColor": "text"}}]}]), 18, 12, new_row=True)
@@ -580,14 +590,17 @@ def energy() -> Dash:
                              f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '7 days' AND $__timeTo()::timestamptz - interval '7 days' AND {DEV} GROUP BY 1 ORDER BY 1",
                              ref="B")],
                      unit="watt", span_ms=150000, decimals=2), 12, 8)
-    d.add(timeseries("Moc bazowa (5. percentyl nocą)",
-                     "Moc bazowa doby: 5. percentyl średniej minutowej mocy czynnej [W] w godzinach lokalnych 00:00–05:00 (obciążenie tła, gdy maszyny nie pracują). "
-                     "Jedna wartość na dobę lokalną.",
-                     [target(f"SELECT (bucket AT TIME ZONE '{TZ}')::date::timestamp AT TIME ZONE '{TZ}' AS time, "
-                             "percentile_cont(0.05) WITHIN GROUP (ORDER BY active_power_sum / active_power_n) AS \"Moc bazowa\" FROM energy_1m "
-                             f"WHERE $__timeFilter(bucket) AND {DEV} AND active_power_n > 0 AND extract(hour FROM bucket AT TIME ZONE '{TZ}') < 5 "
-                             "GROUP BY 1 ORDER BY 1")],
-                     unit="watt", bars=True, span_ms=200000000, decimals=2, min_=0), 24, 8, new_row=True)
+    night_day = f"(bucket AT TIME ZONE '{TZ}')::date"
+    d.add(barchart(f"Moc bazowa (5. percentyl nocą, ostatnie {BASE_NIGHTS} nocy)",
+                   "Moc bazowa doby: 5. percentyl średniej minutowej mocy czynnej [W] w godzinach lokalnych 00:00–05:00 (obciążenie tła, gdy maszyny nie pracują). "
+                   f"Jedna wartość na dobę lokalną. Zakres: ostatnie {BASE_NIGHTS} nocy liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego): "
+                   "przy krótkim zakresie (np. 1 godzina) nie ma nocy, więc panel o zakresie pulpitu byłby pusty.",
+                   [target(f"SELECT {_day_label(night_day)} AS \"Noc (doba)\", "
+                           "percentile_cont(0.05) WITHIN GROUP (ORDER BY active_power_sum / active_power_n) AS \"Moc bazowa [W]\" FROM energy_1m "
+                           f"WHERE {night_day} >= {OWN_RANGE_MARKER['daily']} AND {DEV} AND active_power_n > 0 "
+                           f"AND extract(hour FROM bucket AT TIME ZONE '{TZ}') < 5 "
+                           f"GROUP BY {night_day} ORDER BY {night_day}", "table")],
+                   unit="watt", decimals=2, min_=0), 24, 8, new_row=True)
     d.add(timeseries("Energia bierna z mocy (całka Q, godziny)",
                      "Energia bierna z całki mocy biernej [varh] w każdej godzinie, z podziałem na znak Q (suma Q × okres próbkowania / 3600 z obecnych próbek; "
                      "agregat godzinny, obejmuje także okres sprzed mapy v2). Q > 0: indukcyjna (konwencja odbiornika), Q < 0: pojemnościowa, podana jako moduł, "
@@ -599,13 +612,14 @@ def energy() -> Dash:
                    "Energia bierna [varh] w dobie lokalnej: całka mocy biernej (Q > 0 i |Q| przy Q < 0) oraz przyrost liczników n2 (Q > 0) i n4 (Q < 0). "
                    "Przyrost liczy zapytanie z agregatu godzinnego z zapasem 3 dni wstecz (jak widok reactive_1h_calc, ale bez przeglądania całej historii). "
                    "Licznik zmienia stan co 100 varh, a przy Q ≈ −9 var to jeden krok na ok. 11 godzin, więc przyrost dobowy to 0, 100 lub 200: "
-                   "brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero). "
+                   "brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero): dane licznika są od 25.11.2026 10:43 UTC, a do pierwszego kroku licznika n4 "
+                   "(co 100 varh) seria licznika jest pusta lub zerowa, co nie oznacza błędu. "
                    f"Zakres: ostatnie {DAYS_RANGE} liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
                    [target("WITH h AS (SELECT bucket, counter_pos_first AS pf, counter_pos_last AS pl, counter_neg_first AS nf, counter_neg_last AS nl, "
                            "reactive_pos_sum, reactive_neg_sum FROM energy_ext_1h WHERE " + DEV + " AND bucket >= now() - interval '17 days'), "
                            "pos AS (SELECT bucket, pf, pl, lag(pl) OVER (ORDER BY bucket) AS prev FROM h WHERE pl IS NOT NULL), "
                            "neg AS (SELECT bucket, nf, nl, lag(nl) OVER (ORDER BY bucket) AS prev FROM h WHERE nl IS NOT NULL) "
-                           "SELECT to_char(day, 'DD.MM') AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", "
+                           f"SELECT {_day_label('day')} AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", "
                            "pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM ("
                            f"SELECT (h.bucket AT TIME ZONE '{TZ}')::date AS day, sum(h.reactive_pos_sum) * {POLL} / 3600.0 AS pos_int, "
                            f"-sum(h.reactive_neg_sum) * {POLL} / 3600.0 AS neg_int, "

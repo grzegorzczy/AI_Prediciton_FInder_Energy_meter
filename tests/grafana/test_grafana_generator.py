@@ -95,7 +95,7 @@ def test_panels_with_their_own_range_do_not_depend_on_the_dashboard_range():
     assert set(generator.OWN_RANGE_PANELS) == {
         ("energia", "Zużycie na dobę (ostatnie 14d)"), ("energia", "Profil: godzina × dzień tygodnia (ostatnie 28d)"),
         ("energia", "Moc maks. profilu"), ("energia", "Kontrola całki mocy a licznik wzorcowy (doby, ostatnie 14d)"),
-        ("energia", "Energia bierna na dobę: całka i licznik (ostatnie 14d)")}
+        ("energia", "Energia bierna na dobę: całka i licznik (ostatnie 14d)"), ("energia", "Moc bazowa (5. percentyl nocą, ostatnie 14 nocy)")}
     for key, marker in generator.OWN_RANGE_PANELS.items():
         panel = panels[key]
         for target in panel["targets"]:
@@ -205,9 +205,9 @@ def test_k7c_formatting_fixes():
     """W-5 (decimals 2), W-6 (słupki), W-7 (krótkie nagłówki), W-8 (wysokość), W-9 (kolor i zapas osi pasm)."""
     panels = _panels()
     for key in (("energia", "Moc: bieżący zakres a poprzednia doba"), ("energia", "Moc: bieżący zakres a poprzedni tydzień"),
-                ("energia", "Moc bazowa (5. percentyl nocą)")):
+                ("energia", "Moc bazowa (5. percentyl nocą, ostatnie 14 nocy)")):
         assert panels[key]["fieldConfig"]["defaults"]["decimals"] == 2, key
-    assert panels[("energia", "Moc bazowa (5. percentyl nocą)")]["fieldConfig"]["defaults"]["custom"]["drawStyle"] == "bars"
+    assert panels[("energia", "Moc bazowa (5. percentyl nocą, ostatnie 14 nocy)")]["type"] == "barchart"             # K8-V6: oś kategorii (nocy), nie czasu pulpitu
     control = next(p for (n, t), p in panels.items() if t.startswith("Kontrola całki mocy"))
     for header in ("Licznik [Wh]", "Ekstrap. [Wh]", "W rozdz.", "Rozdz. [Wh]", "Luki"):
         assert header in control["targets"][0]["rawSql"]
@@ -316,3 +316,32 @@ def test_state_timeline_query_returns_to_the_state_after_a_gap():
     for title in ("Łącze z PLC (link_status)", "Stan licznika (meter_status)"):
         sql = _panels()[("diagnostyka", title)]["targets"][0]["rawSql"]
         assert "time - prev_time > make_interval(secs => $stale_s)" in sql and "prev IS DISTINCT FROM value" in sql, title
+
+
+# --- k8c: K8-V5 (etykiety osi energii biernej), K8-V6 (moc bazowa z własnym zakresem), K8-V7 (profil bez przewijania) ------------
+
+def test_reactive_daily_axis_labels_are_text_and_the_meter_series_is_explained():
+    """K8-V5: etykieta doby nie może wyglądać jak liczba („23.11” -> „23.1 varh”); opis wyjaśnia pustą serię licznika."""
+    panel = _panels()[("energia", "Energia bierna na dobę: całka i licznik (ostatnie 14d)")]
+    sql = panel["targets"][0]["rawSql"]
+    assert "|| ' ' || CASE extract(isodow FROM day)" in sql and "to_char(day, 'DD.MM')" in sql
+    assert "10:43 UTC" in panel["description"] and "n4" in panel["description"] and "pusta" in panel["description"]
+    assert panel["fieldConfig"]["defaults"]["unit"] == "suffix: varh"                  # jednostka na osi wartości, nie kategorii
+
+
+def test_base_power_is_a_barchart_over_the_last_nights_independent_of_the_dashboard_range():
+    """K8-V6: tytuł z zakresem, SQL od „teraz”, etykiety tekstowe (dzień tygodnia)."""
+    panel = _panels()[("energia", "Moc bazowa (5. percentyl nocą, ostatnie 14 nocy)")]
+    sql = panel["targets"][0]["rawSql"]
+    assert panel["type"] == "barchart" and "ostatnie 14 nocy" in panel["title"]
+    assert "$__timeFilter" not in sql and "extract(hour FROM bucket AT TIME ZONE 'Europe/Warsaw') < 5" in sql
+    assert "niezależnie od zakresu pulpitu" in panel["description"]
+
+
+def test_profile_table_fits_all_seven_days_without_horizontal_scrolling():
+    """K8-V7: wąskie kolumny (8 kolumn: godzina + 7 dni): minWidth <= 60 px, łącznie <= 480 px, mieści się w panelu 18 z 24 kolumn."""
+    panel = next(p for (n, t), p in _panels().items() if t.startswith("Profil: godzina"))
+    custom = panel["fieldConfig"]["defaults"]["custom"]
+    assert custom["minWidth"] <= 60 and custom["minWidth"] * 8 <= 480
+    sql = panel["targets"][0]["rawSql"]
+    assert all(f'AS "{name}"' in sql for name in ("Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Niedz"))
