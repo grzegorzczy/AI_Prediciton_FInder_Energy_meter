@@ -51,6 +51,7 @@ Metryki mapy v2 (THD, kąt, PF, cos φ) liczone po restarcie bez zmian: PF ≈ 0
 ## Znane ograniczenia (nie blokują zamknięcia etapu 2)
 
 - **E2-PLC1:** błędy CRC na RS485 pojawiają się seriami; przyczyna fizyczna nieustalona, odłożone (nie wpływa na zgodność wartości; w bazie widoczne jako `meter_status ≠ 0`).
+  Fakty z 25.11.2026 (k8c): 36 epizodów `meter_status ≠ 0` od północy, **wszystkie przy mapie v1**, w trzech seriach co 128 s (00:24–00:49, jeden o 00:56 i 08:23–09:09 czasu lokalnego), każdy ok. 4 s, kody 162 (123 wiersze) i 161 (20 wierszy); po 09:10 lokalnie żadnego, **pod mapą v2 (od 11:43 lokalnie) zero**.
 - **Drugi licznik** wymaga nowej mapy Modbus (większe `awTcpInputRegs`, np. rejestry 0–199 – nowa wersja mapy), zgłoszone architektowi na etap 3.
 - **`energy_1m_calc` i `reactive_1h_calc`** są wolne na rocznych zakresach (widoki; panele czytają agregaty bezpośrednio) – przepisanie na funkcje zakresowe w etapie 4.
 - Taryfy i koszty energii nie należą do etapu 2 (etap 4); dashboardy ich nie zawierają.
