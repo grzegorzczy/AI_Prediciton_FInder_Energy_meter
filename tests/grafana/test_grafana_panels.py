@@ -156,7 +156,24 @@ def test_v2_panels_return_data_for_the_meter_with_v2_and_no_rows_for_the_meter_w
         without_v2 = rows_by_panel(DASHES[name], "6h", M2)
         for title in V2_PANEL_TITLES & set(with_v2):
             assert with_v2[title] > 0, f"{name}/{title}: licznik z danymi v2 bez wierszy"
+            if title in NULL_ROW_TILES:                       # kafelki z podzapytaniem zwracają jeden wiersz z NULL (patrz test niżej)
+                continue
             assert without_v2[title] == 0, f"{name}/{title}: licznik bez v2 ma {without_v2[title]} wierszy (powinien być brak danych)"
+
+
+NULL_ROW_TILES = {"Temperatura licznika", "Czas pracy licznika"}
+
+
+def test_v2_tiles_without_data_return_null_not_zero(grafana_data):
+    """Kafelki temperatury i czasu pracy: licznik bez v2 daje NULL (panel pokaże „Brak danych (mapa v1)”), nigdy 0."""
+    now = time.time()
+    for title in NULL_ROW_TILES:
+        panel = next(p for p in DASHES["diagnostyka"]["panels"] if p["title"] == title)
+        target = panel["targets"][0]
+        without = ds_query(expand_vars(target["rawSql"], M2), target["format"], now - 6 * 3600, now)
+        with_v2 = ds_query(expand_vars(target["rawSql"], M1), target["format"], now - 6 * 3600, now)
+        assert without["frames"][0]["data"]["values"][1] == [None], title
+        assert with_v2["frames"][0]["data"]["values"][1][0] not in (None, 0), title
 
 
 def test_thd_values_are_the_stored_ones_not_zero_filled(grafana_data):
