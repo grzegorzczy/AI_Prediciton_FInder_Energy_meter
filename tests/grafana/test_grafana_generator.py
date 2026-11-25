@@ -134,7 +134,7 @@ def test_units_titles_and_formats_are_readable():
     """K7-V7 (jednostka var), V8 (krótkie tytuły kafelków), V9 (data bez godziny), V10, V11, V13, V15."""
     panels = _panels()
     assert "reactivevoltamp" not in json_text()
-    assert panels[("na-zywo", "Q")]["fieldConfig"]["defaults"]["unit"] == "suffix: var"
+    assert panels[("na-zywo", "Moc bierna Q")]["fieldConfig"]["defaults"]["unit"] == "suffix: var"
     for (name, title), panel in panels.items():
         if panel["type"] == "stat" and panel["gridPos"]["w"] <= 6:
             assert len(title) <= 28, f"{name}/{title}: tytuł kafelka może się obcinać"
@@ -211,7 +211,7 @@ def test_k7c_formatting_fixes():
     control = next(p for (n, t), p in panels.items() if t.startswith("Kontrola całki mocy"))
     for header in ("Licznik [Wh]", "Ekstrap. [Wh]", "W rozdz.", "Rozdz. [Wh]", "Luki"):
         assert header in control["targets"][0]["rawSql"]
-    assert panels[("na-zywo", "Wartości w oknie")]["gridPos"]["h"] >= 9
+    assert panels[("na-zywo", "Wartości w oknie")]["gridPos"]["h"] >= 14
     assert panels[("jakosc", "Poza pasmem U [min]")] and panels[("energia", "Moc maks. profilu")]["gridPos"]["w"] >= 6
     for key, band in ((("jakosc", "Napięcie (min, średnia, maks.)"), "granica pasma"), (("jakosc", "Odchyłka częstotliwości od znamionowej"), "granica")):
         panel = panels[key]
@@ -226,7 +226,7 @@ def test_k7c_formatting_fixes():
 # --- E2-PLC2, krok 2: panele mapy v2 ---------------------------------------------------------------------------------------
 
 V2_PANELS = [
-    ("na-zywo", "THD U"), ("na-zywo", "THD I"), ("na-zywo", "Kąt U–I"), ("na-zywo", "Temp."),
+    ("na-zywo", "THD napięcia"), ("na-zywo", "THD prądu"), ("na-zywo", "Kąt U–I"), ("na-zywo", "Temperatura licznika"),
     ("na-zywo", "THD napięcia (THD U)"), ("na-zywo", "THD prądu (THD I)"),
     ("jakosc", "THD napięcia (THD U)"), ("jakosc", "THD prądu (THD I)"), ("jakosc", "Kąt U–I"),
     ("diagnostyka", "Temperatura licznika"), ("diagnostyka", "Temperatura licznika [°C]"),
@@ -281,3 +281,38 @@ def test_reactive_energy_panels_describe_the_resolution_and_use_the_view():
 def test_rows_per_minute_description_uses_the_v2_model():
     description = _panels()[("diagnostyka", "Wiersze na minutę w bazie")]["description"]
     assert "13 wierszy na sekundę przy mapie v1" in description and "20 przy mapie v2" in description and "1 200 na minutę" in description
+
+
+# --- k8c: K8-V1 (oś stanów po luce), K8-V2 (pełne nazwy kafelków), K8-V3 (tabela bez przewijania) ------------------------------
+
+LIVE_TILE_TITLES = ["Napięcie U", "Prąd I", "Moc czynna P", "Moc bierna Q", "Moc pozorna S", "Współczynnik mocy PF", "Częstotliwość f",
+                    "THD napięcia", "THD prądu", "Kąt U–I", "Temperatura licznika"]
+
+
+def test_live_tiles_have_full_names_and_fit_their_width():
+    """K8-V2: tytuły kafelków to pełne nazwy z symbolem; długość mieści się w najwęższym kafelku (3 z 24 kolumn)."""
+    dash = dashboards()["na-zywo"]
+    tiles = [p for p in dash["panels"] if p["type"] == "stat"]
+    assert [p["title"] for p in tiles] == LIVE_TILE_TITLES
+    for tile in tiles:
+        width_cols = tile["gridPos"]["w"]
+        assert len(tile["title"]) <= 4 + width_cols * 6, f"{tile['title']}: za długi dla {width_cols} kolumn"
+
+
+def test_live_values_table_height_fits_all_rows_without_scrolling():
+    """K8-V3: wysokość panelu dobrana do liczby wierszy (nagłówek + wiersze po 36 px + tytuł i marginesy)."""
+    import re
+
+    panel = _panels()[("na-zywo", "Wartości w oknie")]
+    sql = panel["targets"][0]["rawSql"]
+    metrics = re.search(r"metric IN \(([^)]*)\)", sql).group(1).split(",")
+    needed_px = (len(metrics) + 1) * 36 + 56
+    height_px = panel["gridPos"]["h"] * 30 + (panel["gridPos"]["h"] - 1) * 8
+    assert len(metrics) == 11 and height_px >= needed_px, (len(metrics), height_px, needed_px)
+
+
+def test_state_timeline_query_returns_to_the_state_after_a_gap():
+    """K8-V1: wiersz stanu także dla pierwszego wiersza po luce, gdy wartość się nie zmieniła (0 -> 0)."""
+    for title in ("Łącze z PLC (link_status)", "Stan licznika (meter_status)"):
+        sql = _panels()[("diagnostyka", title)]["targets"][0]["rawSql"]
+        assert "time - prev_time > make_interval(secs => $stale_s)" in sql and "prev IS DISTINCT FROM value" in sql, title

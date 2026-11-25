@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from grafana_support import RANGES, dashboards, ds_query, effective_seconds, expand_vars, panel_targets, targets
+from grafana_support import RANGES, dashboards, ds_query, effective_seconds, expand_vars, load_generator, panel_targets, targets
 
 M1, M2 = "finder_7m24_1", "finder_7m24_2"
 DASHES = dashboards()
@@ -77,7 +77,7 @@ def test_live_panels_return_data_for_a_short_range(grafana_data):
 
 
 def test_device_variable_separates_the_meters(grafana_data):
-    power = next(t for title, t in targets(DASHES["na-zywo"]) if title == "P")
+    power = next(t for title, t in targets(DASHES["na-zywo"]) if title == "Moc czynna P")
     now = time.time()
     first = ds_query(expand_vars(power["rawSql"], M1), "time_series", now - 900, now)
     second = ds_query(expand_vars(power["rawSql"], M2), "time_series", now - 900, now)
@@ -159,7 +159,7 @@ def test_own_range_panels_return_the_same_data_for_any_dashboard_range(grafana_d
         assert results[0] and results[0][0][0], f"{title}: brak danych"
 
 
-V2_PANEL_TITLES = {"THD U", "THD I", "Kąt U–I", "Temp.", "THD napięcia (THD U)", "THD prądu (THD I)", "Temperatura licznika",
+V2_PANEL_TITLES = {"THD napięcia", "THD prądu", "Kąt U–I", "THD napięcia (THD U)", "THD prądu (THD I)", "Temperatura licznika",
                    "Temperatura licznika [°C]", "Czas pracy licznika", "Czas pracy licznika [dni]"}
 
 
@@ -211,3 +211,21 @@ def test_pf_panel_cos_phi_series_matches_the_stored_angle(grafana_data):
     result = ds_query(expand_vars(target["rawSql"], M1), "time_series", now - 6 * 3600, now, target["refId"])
     values = [v for v in result["frames"][0]["data"]["values"][1] if v is not None]
     assert values and all(abs(v - math.cos(math.radians(-50.5))) < 0.03 for v in values)
+
+
+@pytest.mark.parametrize("title,metric_device", [("Łącze z PLC (link_status)", None), ("Stan licznika (meter_status)", None)])
+def test_state_timeline_resumes_after_a_gap_without_a_change_of_state(grafana_data, title, metric_device):
+    """K8-V1: w danych testowych jest 10-minutowa luka sprzed 3 godzin ze stanem 0 przed i po niej: po „Brak danych” (100)
+    musi być wiersz stanu, bo inaczej oś zostaje w „Brak danych” do końca zakresu."""
+    no_data = load_generator().NO_DATA_CODE
+    panel = next(p for p in DASHES["diagnostyka"]["panels"] if p["title"] == title)
+    target = panel["targets"][0]
+    now = time.time()
+    result = ds_query(expand_vars(target["rawSql"], M1), target["format"], now - 6 * 3600, now, target["refId"])
+    assert not result["error"], result["error"]
+    values = [v for v in result["frames"][0]["data"]["values"][1] if v is not None]
+    assert no_data in values, "luka sprzed 3 godzin powinna dać stan „Brak danych”"
+    for position, value in enumerate(values):
+        if value == no_data:
+            assert position + 1 < len(values) and values[position + 1] != no_data, f"{title}: po „Brak danych” nie wraca stan"
+    assert values[-1] != no_data, f"{title}: oś kończy się w „Brak danych” mimo płynących danych"

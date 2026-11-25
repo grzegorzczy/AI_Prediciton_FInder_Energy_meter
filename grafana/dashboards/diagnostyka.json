@@ -161,7 +161,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Łącze z PLC\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
+          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lag(time) OVER w AS prev_time, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = (SELECT device_id FROM devices WHERE kind = 'plc' ORDER BY device_id LIMIT 1) AND metric = 'link_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Łącze z PLC\" FROM s WHERE prev IS DISTINCT FROM value OR time - prev_time > make_interval(secs => $stale_s) UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -250,7 +250,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Stan licznika\" FROM s WHERE prev IS DISTINCT FROM value UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
+          "rawSql": "WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lag(time) OVER w AS prev_time, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_status' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Stan licznika\" FROM s WHERE prev IS DISTINCT FROM value OR time - prev_time > make_interval(secs => $stale_s) UNION ALL SELECT time + make_interval(secs => $stale_s), 100 FROM s WHERE next_time - time > make_interval(secs => $stale_s) UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
           "refId": "A"
         }
       ],

@@ -129,7 +129,7 @@
           "refId": "A"
         }
       ],
-      "title": "U",
+      "title": "Napięcie U",
       "type": "stat"
     },
     {
@@ -182,7 +182,7 @@
           "refId": "A"
         }
       ],
-      "title": "I",
+      "title": "Prąd I",
       "type": "stat"
     },
     {
@@ -235,7 +235,7 @@
           "refId": "A"
         }
       ],
-      "title": "P",
+      "title": "Moc czynna P",
       "type": "stat"
     },
     {
@@ -288,7 +288,7 @@
           "refId": "A"
         }
       ],
-      "title": "Q",
+      "title": "Moc bierna Q",
       "type": "stat"
     },
     {
@@ -341,7 +341,7 @@
           "refId": "A"
         }
       ],
-      "title": "S",
+      "title": "Moc pozorna S",
       "type": "stat"
     },
     {
@@ -394,7 +394,7 @@
           "refId": "A"
         }
       ],
-      "title": "PF",
+      "title": "Współczynnik mocy PF",
       "type": "stat"
     },
     {
@@ -447,7 +447,7 @@
           "refId": "A"
         }
       ],
-      "title": "f",
+      "title": "Częstotliwość f",
       "type": "stat"
     },
     {
@@ -501,7 +501,7 @@
           "refId": "A"
         }
       ],
-      "title": "THD U",
+      "title": "THD napięcia",
       "type": "stat"
     },
     {
@@ -555,7 +555,7 @@
           "refId": "A"
         }
       ],
-      "title": "THD I",
+      "title": "THD prądu",
       "type": "stat"
     },
     {
@@ -663,7 +663,7 @@
           "refId": "A"
         }
       ],
-      "title": "Temp.",
+      "title": "Temperatura licznika",
       "type": "stat"
     },
     {
@@ -684,7 +684,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 12,
+        "h": 14,
         "w": 24,
         "x": 0,
         "y": 6
@@ -740,7 +740,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 20
       },
       "id": 13,
       "options": {
@@ -800,7 +800,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 20
       },
       "id": 14,
       "options": {
@@ -860,7 +860,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 27
       },
       "id": 15,
       "options": {
@@ -920,7 +920,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 27
       },
       "id": 16,
       "options": {
@@ -980,7 +980,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 34
       },
       "id": 17,
       "options": {
@@ -1042,7 +1042,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 34
       },
       "id": 18,
       "options": {
@@ -1102,7 +1102,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 41
       },
       "id": 19,
       "options": {
@@ -1162,7 +1162,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 41
       },
       "id": 20,
       "options": {
@@ -1222,7 +1222,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 46
+        "y": 48
       },
       "id": 21,
       "options": {
@@ -1282,7 +1282,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 46
+        "y": 48
       },
       "id": 22,
       "options": {

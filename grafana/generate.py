@@ -334,28 +334,28 @@ def overview() -> Dash:
 VAR_UNIT = "suffix: var"           # Grafana nie ma jednostki wyświetlającej "var": własny sufiks (K7-V7)
 # metryka, skrót (tytuł kafelka), nazwa wykresu, jednostka, opis, szerokość kafelka
 LIVE = [
-    ("voltage", "U", "Napięcie U", "volt", "Napięcie fazowe [V].", 4),
-    ("current", "I", "Prąd I", "amp", "Prąd [A].", 4),
-    ("active_power", "P", "Moc czynna P", "watt", "Moc czynna P [W]: faktycznie pobierana energia.", 4),
-    ("reactive_power", "Q", "Moc bierna Q", VAR_UNIT, "Moc bierna Q [var].", 3),
-    ("apparent_power", "S", "Moc pozorna S", "voltamp", "Moc pozorna S [VA] = U × I.", 3),
-    ("power_factor", "PF", "Współczynnik mocy PF", "", "PF = P / S (cos φ przy przebiegach sinusoidalnych), bez jednostki.", 3),
-    ("frequency", "f", "Częstotliwość f", "hertz", "Częstotliwość sieci [Hz].", 3),
+    ("voltage", "Napięcie U", "Napięcie U", "volt", "Napięcie fazowe [V].", 4),
+    ("current", "Prąd I", "Prąd I", "amp", "Prąd [A].", 4),
+    ("active_power", "Moc czynna P", "Moc czynna P", "watt", "Moc czynna P [W]: faktycznie pobierana energia.", 4),
+    ("reactive_power", "Moc bierna Q", "Moc bierna Q", VAR_UNIT, "Moc bierna Q [var].", 3),
+    ("apparent_power", "Moc pozorna S", "Moc pozorna S", "voltamp", "Moc pozorna S [VA] = U × I.", 3),
+    ("power_factor", "Współczynnik mocy PF", "Współczynnik mocy PF", "", "PF = P / S (cos φ przy przebiegach sinusoidalnych), bez jednostki.", 3),
+    ("frequency", "Częstotliwość f", "Częstotliwość f", "hertz", "Częstotliwość sieci [Hz].", 3),
 ]
 
 
 NO_V2 = "Brak danych (mapa v1)"          # metryki mapy v2: przed v2 brak wartości = brak danych, nigdy zero
-# metryka, skrót (kafelek), nazwa wykresu, jednostka, opis, szerokość kafelka
+# metryka, tytuł kafelka (pełna nazwa, K8-V2), nazwa wykresu, jednostka, opis, szerokość kafelka
 LIVE_V2 = [
-    ("thd_voltage", "THD U", "THD napięcia (THD U)", "percent",
+    ("thd_voltage", "THD napięcia", "THD napięcia (THD U)", "percent",
      "Zawartość harmonicznych napięcia U1 [%] (mapa v2).", 6),
-    ("thd_current", "THD I", "THD prądu (THD I)", "percent",
+    ("thd_current", "THD prądu", "THD prądu (THD I)", "percent",
      "Zawartość harmonicznych prądu I1 [%] (mapa v2). Zasilacze impulsowe dają wartości rzędu 100–150%. Przy małym prądzie względem zakresu licznika "
      "(80 mA wobec 40 A) wartość może być niepewna.", 6),
     ("phase_angle", "Kąt U–I", "Kąt U–I", "degree",
      "Kąt między napięciem a prądem [°] (mapa v2). U nas kąt jest ujemny przy mocy biernej Q < 0 (zmierzone 25.11.2026: −50,6° przy Q ≈ −9 var); "
      "konwencja znaku Findera nie jest potwierdzona w dokumentacji.", 6),
-    ("meter_temperature", "Temp.", "Temperatura licznika", "celsius",
+    ("meter_temperature", "Temperatura licznika", "Temperatura licznika", "celsius",
      "Temperatura wewnętrzna licznika [°C] (mapa v2), odświeżana w PLC co 10 s.", 6),
 ]
 
@@ -385,7 +385,7 @@ def live() -> Dash:
                         "avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND "
                         f"{DEV} AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency',"
                         "'thd_voltage','thd_current','phase_angle','meter_temperature') "
-                        "GROUP BY metric ORDER BY 1", "table")], decimals=2, no_value=NO_V2), 24, 12, new_row=True)
+                        "GROUP BY metric ORDER BY 1", "table")], decimals=2, no_value=NO_V2), 24, 14, new_row=True)   # K8-V3: 11 wierszy bez przewijania
     charts = [item for item in LIVE] + [item for item in LIVE_V2 if item[0] != "meter_temperature"]      # temperatura: „Stan i diagnostyka”
     for i, (metric, short, title, unit, desc, width) in enumerate(charts):
         extra = {"min_": 0, "max_": 1} if metric == "power_factor" else {}
@@ -637,11 +637,14 @@ SENTINEL = "SELECT $__timeFrom()::timestamptz, NULL"      # wiersz zapewniający
 
 
 def _states(metric_device: str, metric: str, label: str) -> str:
-    """Zmiany stanu metryki + sztuczny stan „brak danych” po luce dłuższej niż $stale_s (zakres do 7 dni)."""
+    """Zmiany stanu metryki + sztuczny stan „brak danych” po luce dłuższej niż $stale_s (zakres do 7 dni).
+    K8-V1: pierwszy wiersz PO luce jest też wierszem stanu, nawet gdy wartość się nie zmieniła (0 -> 0); bez niego oś
+    zostawała w „Brak danych” do końca zakresu."""
     return (
-        f"WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lead(time) OVER w AS next_time FROM measurements "
+        f"WITH s AS (SELECT time, value, lag(value) OVER w AS prev, lag(time) OVER w AS prev_time, lead(time) OVER w AS next_time "
+        f"FROM measurements "
         f"WHERE $__timeFilter(time) AND device_id = {metric_device} AND metric = '{metric}' AND {SPAN_GUARD_7D} WINDOW w AS (ORDER BY time)) "
-        f"SELECT time, value AS \"{label}\" FROM s WHERE prev IS DISTINCT FROM value "
+        f"SELECT time, value AS \"{label}\" FROM s WHERE prev IS DISTINCT FROM value OR time - prev_time > {STALE} "
         f"UNION ALL SELECT time + {STALE}, {NO_DATA_CODE} FROM s WHERE next_time - time > {STALE} "
         f"UNION ALL {SENTINEL} ORDER BY 1")
 
