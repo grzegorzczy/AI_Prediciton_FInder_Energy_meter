@@ -299,6 +299,18 @@ SELECT * FROM energy_daily_check ORDER BY day DESC LIMIT 7;
 Przerwana migracja `002` (np. restart w trakcie) nic nie psuje: runner zapisuje sumę kontrolną dopiero po ostatniej instrukcji,
 a wszystkie instrukcje są idempotentne, więc kolejne `docker compose up -d` wykona plik od początku.
 
+## Kolejność wdrożenia zmian (R-1, k7d)
+
+Zawsze w tej kolejności, na komputerze w `/home/jumo/ai-predykcja`:
+
+1. `git pull --ff-only` (tylko to, co jest w `origin/main`; potem kontrola praw plików, sekcja „Kontrola praw po każdym `git pull`”).
+2. `docker compose up -d --build`. **`--build` jest obowiązkowe przy nowej migracji (decyzja D4):** pliki migracji są wbudowane w obraz `migrate`, więc samo `up -d` zostawia stary obraz
+   i nic nie stosuje (`done: 0 applied`). Kontenery bez zmian zostają bez restartu; kontener, którego konfiguracja lub obraz się zmieniły (np. Grafana), jest odtwarzany.
+3. Sprawdzenie, że migracje poszły: `docker logs aip-migrate | tail -4` (linia `applied NNN_...sql`) i `SELECT version, name FROM schema_migrations ORDER BY 1;`
+   (liczba wierszy równa liczbie plików w `db/migrations/`).
+
+Zmiany tylko w `grafana/dashboards/*.json` nie wymagają kroku 2: Grafana wczytuje je sama w ciągu 30 s po `git pull`.
+
 ## Utrata danych przy przerwach (bufory)
 
 Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje przy przerwie i co traci się przy długiej:
