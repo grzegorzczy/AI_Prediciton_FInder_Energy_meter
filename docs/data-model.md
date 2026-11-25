@@ -92,6 +92,7 @@ Polityki jak dla `energy_1m`/`energy_1h` (odświeżanie 7 dni/1 min i 30 dni/15 
 Dla okresu sprzed mapy v2 kolumny metryk v2 to NULL (liczności 0): **brak danych, nie zero**. Widok `reactive_1h_calc` (migracja `008`): przyrost liczników n2 i n4 względem poprzedniego
 wiaderka z odczytem (`LAG`, reset, `pos_gap_before` i `neg_gap_before`), całka mocy biernej w varh (`reactive_pos_integral_varh`, `reactive_neg_integral_varh` jako moduł),
 `coverage`, `bucket_complete`, rozdzielczość `resolution_varh` (100 varh) i okres próbkowania z `devices.meta`. Nazwy n2 i n4 wg znaku mocy biernej, nie kierunku przepływu (`docs/modbus-map.md`).
+**Ostrzeżenie:** na roku danych `reactive_1h_calc` trwa ok. 20 s (limit `app_reader` 10 s; przyczyny nie ustalono), więc **nie używać go na długich zakresach**: panele Grafany czytają `energy_ext_1h` wprost i liczą przyrost z zapasem 3 dni (jak K6-U4). Widok zostaje dla analityki po wyjaśnieniu.
 
 ### Widoki pochodne energii (migracja `003_energy_views.sql`)
 
