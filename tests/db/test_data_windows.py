@@ -16,7 +16,7 @@ def test_seed_windows_are_present_and_consistent(admin):
     kinds = [r[0] for r in rows]
     assert kinds == ["collector_start", "calm_window", "mqtt_broker_restart", "collector_stopped", "rs485_break",
                      "plc_lan1_unplugged", "plc_program_stop", "power_outage", "collector_stopped", "plc_program_download",
-                     "deploy", "plc_program_download"]
+                     "deploy", "plc_program_download", "plc_program_download"]
     assert all(r[2] >= r[1] for r in rows)
     assert {r[0] for r in rows if not r[3]} == {"calm_window"}          # tylko okno referencyjne zostaje w analityce
 
@@ -35,7 +35,7 @@ def test_annotation_query_returns_the_windows_of_a_range(admin):
 
 
 def test_reader_reads_and_writer_and_reader_cannot_change(reader, writer):
-    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 12
+    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 13
     with pytest.raises(psycopg.Error):
         reader.execute("DELETE FROM data_windows")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -65,7 +65,17 @@ def test_plc1_download_window_of_25_november_has_the_exact_boundaries_from_the_d
     rows = admin.execute(
         "SELECT start_time, end_time, description, exclude_from_analytics FROM data_windows "
         "WHERE kind = 'plc_program_download' ORDER BY start_time").fetchall()
-    assert len(rows) == 2
+    assert len(rows) == 3
     start, end, description, exclude = rows[1]
     assert start.isoformat() == "2026-11-25T08:16:10.574000+00:00" and end.isoformat() == "2026-11-25T08:16:18.577000+00:00"
     assert "PLC-1" in description and exclude is True
+
+
+def test_plc2_download_window_of_25_november_has_the_exact_boundaries_from_the_data(admin):
+    """E2-PLC2 krok 4 (migracja 010): pierwszy i ostatni wiersz link_status != 0 przy przełączeniu na mapę v2 (10:43:01.518 – 10:43:09.521 UTC)."""
+    rows = admin.execute(
+        "SELECT start_time, end_time, description, exclude_from_analytics FROM data_windows "
+        "WHERE kind = 'plc_program_download' ORDER BY start_time").fetchall()
+    start, end, description, exclude = rows[2]
+    assert start.isoformat() == "2026-11-25T10:43:01.518000+00:00" and end.isoformat() == "2026-11-25T10:43:09.521000+00:00"
+    assert "PLC-2" in description and "v2" in description and exclude is True
