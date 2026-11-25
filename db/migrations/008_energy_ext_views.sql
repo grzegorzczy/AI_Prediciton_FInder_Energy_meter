@@ -3,7 +3,7 @@
 -- na znak (ta sama konstrukcja co energy_1h_calc, D7): obie miary obok siebie. Rozdzielczość licznika (100 varh) i okres próbkowania
 -- z devices.meta (reactive_resolution_varh, poll_interval_s); brak wartości daje NULL, a nie domysł.
 -- Przyrost liczony względem poprzedniego wiaderka Z odczytem licznika (LAG po wierszach z licznikiem), reset licznika
--- (wartość mniejsza od poprzedniej: przyrost = wartość) i flaga gap_before jak w energy_1h_calc. Całka neg jest podana jako wartość
+-- (wartość mniejsza od poprzedniej: przyrost = wartość) i flagi pos_gap_before i neg_gap_before (osobno dla każdego licznika) jak gap_before w energy_1h_calc. Całka neg jest podana jako wartość
 -- dodatnia (moduł), żeby porównywać ją wprost ze stanem licznika n4.
 -- Przy obecnym obciążeniu (Q ok. -9 var) licznik zmienia stan co 100 varh, czyli raz na ok. 11 godzin: przyrost godzinowy
 -- jest prawie zawsze 0; całka mocy daje bieżący obraz.
@@ -52,7 +52,8 @@ SELECT
     END                                                      AS reactive_neg_delta_varh,
     COALESCE(b.counter_pos_last < p.prev_last, FALSE)        AS pos_reset,
     COALESCE(b.counter_neg_last < n.prev_last, FALSE)        AS neg_reset,
-    COALESCE(b.bucket - p.prev_bucket > INTERVAL '1 hour', FALSE) AS gap_before,
+    COALESCE(b.bucket - p.prev_bucket > INTERVAL '1 hour', FALSE) AS pos_gap_before,
+    COALESCE(b.bucket - n.prev_bucket > INTERVAL '1 hour', FALSE) AS neg_gap_before,
     -- całka mocy biernej (Q > 0 i |Q| przy Q < 0) z obecnych próbek i pokrycie godziny pomiarem Q
     b.reactive_pos_sum * b.poll_interval_s / 3600.0          AS reactive_pos_integral_varh,
     -b.reactive_neg_sum * b.poll_interval_s / 3600.0         AS reactive_neg_integral_varh,

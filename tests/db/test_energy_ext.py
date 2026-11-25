@@ -219,12 +219,12 @@ def test_counter_delta_reset_gap_and_first_bucket(admin):
     series(admin, "reactive_neg_varh", BASE + 8 * HOUR, 3600, "300", unit="varh")                          # h8: po luce
     by = {r["bucket"]: r for r in hourly(admin)}
     h = lambda i: by[BASE + i * HOUR]                                                                       # noqa: E731
-    assert h(0)["reactive_neg_delta_varh"] == 0 and not h(0)["gap_before"]
+    assert h(0)["reactive_neg_delta_varh"] == 0 and not h(0)["neg_gap_before"]
     assert h(1)["reactive_neg_delta_varh"] == 100 and not h(1)["neg_reset"]
     assert h(2)["reactive_neg_delta_varh"] is None                                                          # brak odczytu: NULL, nie zero
-    assert h(3)["reactive_neg_delta_varh"] == 0 and h(3)["gap_before"] is True                              # nie zerowane przez h2
+    assert h(3)["reactive_neg_delta_varh"] == 0 and h(3)["neg_gap_before"] is True                              # nie zerowane przez h2
     assert h(4)["reactive_neg_delta_varh"] == 200 and h(4)["neg_reset"] is True
-    assert h(8)["reactive_neg_delta_varh"] == 100 and h(8)["gap_before"] is True
+    assert h(8)["reactive_neg_delta_varh"] == 100 and h(8)["neg_gap_before"] is True
     assert h(0)["reactive_pos_delta_varh"] is None                                                          # n2 bez danych
 
 
@@ -295,7 +295,7 @@ def statements_of_007() -> list[str]:
     return [part for part in re.split(r"^-- migrate: next\s*$", text, flags=re.MULTILINE) if part.strip()]
 
 
-@pytest.mark.parametrize("applied_before_interrupt", [1, 2, 5, 9, 13])
+@pytest.mark.parametrize("applied_before_interrupt", [1, 2, 5, 9, 12])
 def test_migration_007_interrupted_midway_completes_on_the_next_run(pg, fresh_db, run_migrate, tmp_path, applied_before_interrupt):
     """Jak K6-U3: przerwanie po k-tej instrukcji, ponowny migrate kończy się sukcesem i daje ten sam katalog co czysta baza."""
     statements = statements_of_007()
