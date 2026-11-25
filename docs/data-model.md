@@ -79,6 +79,20 @@ zmaterializowanych wiaderek; kompresja następuje po oknie odświeżania. Dane w
 polityka nie odświeży: po wypełnieniu historii (etap 3) trzeba ręcznie wywołać `CALL refresh_continuous_aggregate('energy_1m', NULL, NULL)`,
 a potem to samo dla `energy_1h` (opis w `docs/ops/jumo-ipc-setup.md`).
 
+### Agregaty jakości i energii biernej (migracja `007_energy_ext_aggregates.sql`, E2-PLC2)
+
+Osobne agregaty obok `energy_1m` i `energy_1h` (te bez zmian), żeby nie usuwać i nie odtwarzać istniejących: agregatu ciągłego nie da się rozszerzyć o kolumny.
+
+| Agregat | Okno | Zawartość |
+| --- | --- | --- |
+| `energy_ext_1m` | 1 min | z `measurements`: dla `thd_voltage`, `thd_current`, `phase_angle`, `meter_temperature` liczność `*_n`, suma `*_sum`, `*_min`, `*_max`; `phase_cos_sum` (suma cos kąta, daje dokładną średnią cos φ); `run_time_first/_last/_min/_max`; stany liczników energii biernej `counter_pos_*` (n2, Q > 0) i `counter_neg_*` (n4, Q < 0); **całka mocy biernej** `reactive_power_n`, `reactive_pos_sum`, `reactive_neg_sum` (suma Q z podziałem na znak, od początku zapisu `reactive_power`, także sprzed mapy v2) |
+| `energy_ext_1h` | 1 h | te same kolumny, złożone z minutowych (hierarchia); `first`/`last` z `FILTER` po kolumnie nie-NULL, bo `first()` bierze najwcześniejszy wiersz także wtedy, gdy ma NULL |
+
+Polityki jak dla `energy_1m`/`energy_1h` (odświeżanie 7 dni/1 min i 30 dni/15 min, kompresja po 14 i 60 dniach, retencja 1 rok i bez limitu, czas rzeczywisty).
+Dla okresu sprzed mapy v2 kolumny metryk v2 to NULL (liczności 0): **brak danych, nie zero**. Widok `reactive_1h_calc` (migracja `008`): przyrost liczników n2 i n4 względem poprzedniego
+wiaderka z odczytem (`LAG`, reset, `pos_gap_before` i `neg_gap_before`), całka mocy biernej w varh (`reactive_pos_integral_varh`, `reactive_neg_integral_varh` jako moduł),
+`coverage`, `bucket_complete`, rozdzielczość `resolution_varh` (100 varh) i okres próbkowania z `devices.meta`. Nazwy n2 i n4 wg znaku mocy biernej, nie kierunku przepływu (`docs/modbus-map.md`).
+
 ### Widoki pochodne energii (migracja `003_energy_views.sql`)
 
 `energy_1m_calc` i `energy_1h_calc` (urządzenie x wiaderko), `energy_daily_check` (urządzenie x doba lokalna).

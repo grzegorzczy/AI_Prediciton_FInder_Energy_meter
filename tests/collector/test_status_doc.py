@@ -50,5 +50,5 @@ def test_error_code_table_matches_the_document():
 def test_document_states_the_row_model():
     text = (REPO / "docs" / "status-codes.md").read_text(encoding="utf-8")
     section = text[text.index("## Liczba wierszy na sekundę"):]
-    for fragment in ("**13**", "**5**", "**1**"):
+    for fragment in ("**13**", "**20**", "**5**", "**1**"):
         assert fragment in section

@@ -180,7 +180,7 @@ services:
       MQTT_PORT: "1883"
       MQTT_USER: ${MQTT_COLLECTOR_USER:?ustaw w .env}
       MQTT_PASSWORD: ${MQTT_COLLECTOR_PASSWORD:?ustaw w .env}
-      COLLECTOR_BUFFER_MAX: "20000"
+      COLLECTOR_BUFFER_MAX: "30000"      # ok. 25 min przy 20 wiadomościach na sekundę (mapa v2)
       LOG_LEVEL: INFO
     volumes:
       - ./config/devices.yaml:/config/devices.yaml:ro   # zmiana adresu PLC bez przebudowy obrazu

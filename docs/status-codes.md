@@ -57,12 +57,15 @@ Test `tests/collector/test_status_doc.py` sprawdza, że ta tabela zgadza się z 
 
 | Stan | Wiersze na sekundę | Skład |
 | --- | --- | --- |
-| Wszystko sprawne | **13** | `link_status` + 12 wierszy licznika (`meter_status`, `meter_error_count`, `meter_data_age_ms`, 7 pomiarów, 2 liczniki energii) |
-| `meter_status` ≠ 0 | **5** | `link_status` + `meter_status`, `meter_error_count`, `meter_data_age_ms` (jeśli ≠ `FFFFFFFF`), `meter_error_code` |
+| Wszystko sprawne, mapa v1 | **13** | `link_status` + 12 wierszy licznika (`meter_status`, `meter_error_count`, `meter_data_age_ms`, 7 pomiarów, 2 liczniki energii) |
+| Wszystko sprawne, mapa v2 | **20** | jak wyżej + 7 wierszy mapy v2: `reactive_pos_varh`, `reactive_neg_varh`, `thd_voltage`, `thd_current`, `phase_angle`, `meter_temperature`, `run_time` (wszystkie co 1 s) |
+| `meter_status` ≠ 0 (v1 i v2) | **5** | `link_status` + `meter_status`, `meter_error_count`, `meter_data_age_ms` (jeśli ≠ `FFFFFFFF`), `meter_error_code` |
 | PLC niedostępny (`link_status` ≠ 0) | **1** | tylko `link_status` |
 
-Przy `meter_data_age_ms` = `FFFFFFFF` (`NO_DATA`) wierszy jest o jeden mniej. Przy ok. 7 W obciążenia i 13 wierszach na sekundę
-dzienny przyrost to ok. 1,1 mln wierszy; zmierzone rozmiary są w `docs/data-model.md`.
+Przy `meter_data_age_ms` = `FFFFFFFF` (`NO_DATA`) wierszy jest o jeden mniej. Nowe wartości mapy v2 są publikowane **tylko przy `meter_status` = 0**
+(te same reguły ważności co pomiary v1; zamrożone wartości nie są zapisywane). Przy 13 wierszach na sekundę dzienny przyrost to ok. 1,1 mln wierszy, przy 20 na sekundę
+ok. 1,7 mln (1 728 000); zmierzone rozmiary są w `docs/data-model.md`. Wartość mapy v2 spoza zakresu `valid_range` z `config/devices.yaml` (filtr wiarygodności,
+nie dane katalogowe) nie jest publikowana, a collector zapisuje WARNING raz na zmianę stanu.
 
 ## Zachowanie w czasie (do dokumentacji i do interpretacji wykresów)
 

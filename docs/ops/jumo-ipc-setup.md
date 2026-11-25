@@ -317,8 +317,8 @@ Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje prz
 
 | Przerwa | Co chroni dane | Granica | Co ginie po przekroczeniu |
 | --- | --- | --- | --- |
-| broker MQTT niedostępny | bufor w pamięci collectora (`COLLECTOR_BUFFER_MAX` = 20 000) | ok. 25 minut przy 13 wiadomościach na sekundę | **najstarsze** wiadomości (luka na początku przerwy) |
-| ingest lub baza niedostępne | kolejka sesji ingestu w Mosquitto (`max_queued_messages` 50 000, `max_queued_bytes` 20 MB) | ok. 64 minuty przy 13 wiadomościach na sekundę (wiąże liczba wiadomości) | **najnowsze** wiadomości (luka na końcu przerwy) |
+| broker MQTT niedostępny | bufor w pamięci collectora (`COLLECTOR_BUFFER_MAX` = 30 000) | ok. 25 minut przy 20 wiadomościach na sekundę (mapa v2; 38 minut przy 13 na sekundę, mapa v1) | **najstarsze** wiadomości (luka na początku przerwy) |
+| ingest lub baza niedostępne | kolejka sesji ingestu w Mosquitto (`max_queued_messages` 80 000, `max_queued_bytes` 20 MB) | ok. 66 minut przy 20 wiadomościach na sekundę (mapa v2; 102 minuty przy 13 na sekundę; wiąże liczba wiadomości) | **najnowsze** wiadomości (luka na końcu przerwy) |
 | ingest nie łączy się z brokerem dłużej niż 7 dni | `persistent_client_expiration 7d` w `mosquitto.conf` | 7 dni | broker usuwa sesję wraz z kolejką; od tej chwili wiadomości nie są kolejkowane, aż ingest znów się zasubskrybuje |
 
 Ingest potwierdza wiadomość brokerowi dopiero po zapisie w bazie, więc awaria ingestu lub bazy nie gubi niczego w granicach
