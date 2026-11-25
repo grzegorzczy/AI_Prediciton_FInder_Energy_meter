@@ -124,6 +124,20 @@ def test_error_code_timeline_returns_to_no_error_after_each_episode(grafana_data
     assert values.count(162.0) > 20 and values.count(0.0) > 20
 
 
+def normalize(values):
+    """Wartości do porównania: liczby do 9 cyfr znaczących (szum sumowania), a procent doby „w toku” zależy od zegara i jest pomijany."""
+    import re
+
+    out = []
+    for v in values:
+        if isinstance(v, float):
+            v = float(f"{v:.9g}")
+        elif isinstance(v, str):
+            v = re.sub(r"\(w toku, \d+%\)", "(w toku)", v)
+        out.append(v)
+    return out
+
+
 def test_own_range_panels_return_the_same_data_for_any_dashboard_range(grafana_data):
     """k7d: panele z własnym zakresem (14 i 28 dni) dają ten sam wynik dla zakresu względnego i bezwzględnego z innej doby."""
     from grafana_support import load_generator
@@ -139,7 +153,7 @@ def test_own_range_panels_return_the_same_data_for_any_dashboard_range(grafana_d
             result = ds_query(expand_vars(target["rawSql"], M1), target["format"], start, end, target["refId"])
             assert not result["error"], f"{title}: {result['error']}"
             # kolumn czasu (np. `now()` w kafelkach) nie porównujemy: różnią się o milisekundy między wywołaniami
-            results.append([[v for field, v in zip(f["schema"]["fields"], f["data"]["values"]) if field.get("type") != "time"]
+            results.append([[normalize(v) for field, v in zip(f["schema"]["fields"], f["data"]["values"]) if field.get("type") != "time"]
                             for f in result["frames"]])
         assert results[0] == results[1] == results[2], f"{title}: wynik zależy od zakresu pulpitu"
         assert results[0] and results[0][0][0], f"{title}: brak danych"
