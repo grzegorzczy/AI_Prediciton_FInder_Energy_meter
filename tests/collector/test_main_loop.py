@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import dataclasses
 import json
 import time
@@ -50,12 +51,15 @@ class ScriptedDriver:
         self.resets = 0
         self.reads_started = 0
         self._hb = 1
+        self.version = 1                       # wersja mapy w obrazie rejestrów (1 albo 2)
+        self.meter_overrides: dict = {}        # nadpisania wartości licznika (np. thd_current)
         self._stale_voltage = stale_voltage
 
     def registers(self, voltage: float | None = None) -> Registers:
         self._hb += 1
         meter = {} if voltage is None else {"voltage": voltage}
-        return Registers(0, build_image(heartbeat=self._hb, meters=((10, meter),))[:44])
+        meter.update(self.meter_overrides)
+        return Registers(0, build_image(heartbeat=self._hb, map_version=self.version, meters=((10, meter),))[:60])
 
     async def read(self) -> Registers:
         self.reads_started += 1
@@ -320,3 +324,31 @@ def test_driver_reset_clears_backoff_and_drops_the_client(loop_config):
         assert "cofanie" not in str(error.value)
 
     asyncio.run(scenario())
+
+
+
+def test_map_version_change_is_logged_once_and_out_of_range_values_once_per_change(loop_config, tmp_path, caplog):
+    """P2-h i P2-f: INFO przy zmianie wersji mapy; WARNING o wartości spoza zakresu raz na zmianę, nie w każdym cyklu."""
+    async def scenario():
+        driver = ScriptedDriver()
+        publisher, stop, task = start(loop_config, driver, tmp_path)
+        await asyncio.sleep(0.5)                                   # v1: 13 wierszy w cyklu
+        driver.version = 2
+        await asyncio.sleep(0.6)
+        driver.meter_overrides = {"thd_current": 5000.0}           # spoza zakresu 0..1000
+        await asyncio.sleep(0.8)
+        driver.meter_overrides = {}
+        await asyncio.sleep(0.5)
+        await finish(stop, task)
+        return publisher
+
+    with caplog.at_level(logging.INFO, logger="collector"):
+        publisher = asyncio.run(scenario())
+    messages = [r.getMessage() for r in caplog.records]
+    assert sum("mapa rejestrów PLC: wersja 1" in m for m in messages) == 1
+    assert sum("zmiana wersji mapy rejestrów PLC: 1 -> 2" in m for m in messages) == 1
+    skipping = [m for m in messages if "pomijam metryki" in m]
+    assert len(skipping) == 1 and "finder_7m24_1.thd_current (spoza zakresu 0..1000)" in skipping[0]    # wiele cykli, jeden wpis
+    assert sum("koniec pomijania" in m for m in messages) == 1
+    metrics = {m for _, _, m, _ in publisher.rows()}
+    assert "thd_voltage" in metrics and "reactive_neg_varh" in metrics     # po przełączeniu na v2 pojawiają się nowe metryki

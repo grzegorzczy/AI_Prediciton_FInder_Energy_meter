@@ -2,7 +2,8 @@
 
 Kolejność oceny w każdym cyklu:
   1. odczyt się nie udał                       -> link_status = PLC_OFFLINE, tylko status
-  2. map_version różny od oczekiwanego         -> link_status = MAP_VERSION_MISMATCH, tylko status
+  2. map_version spoza plc.map_versions        -> link_status = MAP_VERSION_MISMATCH, tylko status
+     (v1 i v2 są akceptowane jednocześnie; pola z `since` > wersja nie są publikowane)
   3. heartbeat bez zmiany > heartbeat_timeout  -> link_status = PLC_STOPPED, tylko status
   4. po (ponownym) połączeniu jeszcze nie widziano zmiany heartbeatu -> nic nie publikujemy (rozgrzewka)
   5. link_status = OK; dla każdego licznika osobno:
@@ -42,13 +43,16 @@ class Evaluation:
     readings: list[Reading] = field(default_factory=list)
     states: dict[str, str] = field(default_factory=dict)
     details: dict[str, str] = field(default_factory=dict)   # szczegół stanu do logu (np. kod błędu licznika)
-    skipped: list[str] = field(default_factory=list)   # metryki pominięte (wartość nie jest liczbą skończoną)
+    skipped: list[str] = field(default_factory=list)   # metryki pominięte (nie liczba skończona albo spoza valid_range)
+    map_version: int | None = None                       # wersja mapy z rejestru (None przy błędzie odczytu lub złej wersji)
+    measured: bool = False                               # True, gdy w tym cyklu odczytano pełny zestaw pomiarów któregoś licznika
 
 
 class Evaluator:
     def __init__(self, config: Config, clock: Callable[[], float] = time.monotonic) -> None:
         self._cfg = config
         self._clock = clock
+        self._version: int | None = None
         self._reset_heartbeat()
 
     def _reset_heartbeat(self) -> None:
@@ -59,6 +63,7 @@ class Evaluator:
     def on_read_failed(self) -> Evaluation:
         # Po utracie połączenia pierwszy odczyt nie może uchodzić za świeży: wymagamy nowej zmiany heartbeatu.
         self._reset_heartbeat()
+        self._version = None
         return self._link_only(LinkStatus.PLC_OFFLINE)
 
     def _link_only(self, status: LinkStatus) -> Evaluation:
@@ -72,9 +77,14 @@ class Evaluator:
     def evaluate(self, regs: Registers) -> Evaluation:
         plc = self._cfg.plc
 
-        if regs.u16(plc.map_version_offset) != plc.map_version:
+        version = regs.u16(plc.map_version_offset)
+        if version not in plc.map_versions:
             self._reset_heartbeat()
+            self._version = None
             return self._link_only(LinkStatus.MAP_VERSION_MISMATCH)
+        if self._version is not None and version != self._version:
+            self._reset_heartbeat()          # zmiana wersji mapy w locie (np. po downloadzie): nowa rozgrzewka (P2-h)
+        self._version = version
 
         now = self._clock()
         heartbeat = regs.u32(plc.heartbeat_offset)
@@ -86,19 +96,23 @@ class Evaluator:
         if now - self._hb_changed_at > plc.heartbeat_timeout_s:
             return self._link_only(LinkStatus.PLC_STOPPED)
         if not self._hb_seen_change:
-            return Evaluation(link_status=None)
+            return Evaluation(link_status=None, map_version=version)
 
         result = self._link_only(LinkStatus.OK)
+        result.map_version = version
         for meter in self._cfg.meters:
-            self._evaluate_meter(meter, regs, result)
+            self._evaluate_meter(meter, regs, result, version)
         return result
 
-    def _evaluate_meter(self, meter: MeterConfig, regs: Registers, out: Evaluation) -> None:
+    def _evaluate_meter(self, meter: MeterConfig, regs: Registers, out: Evaluation, version: int) -> None:
         profile, base, source = meter.profile, meter.block_base, meter.source
 
-        def add(metric: str, value: float, unit: str) -> None:
+        def add(metric: str, value: float, unit: str, valid_range: tuple[float, float] | None = None) -> None:
             if not math.isfinite(value):
                 out.skipped.append(f"{meter.device_id}.{metric}")
+                return
+            if valid_range is not None and not valid_range[0] <= value <= valid_range[1]:
+                out.skipped.append(f"{meter.device_id}.{metric} (spoza zakresu {valid_range[0]:g}..{valid_range[1]:g})")
                 return
             out.readings.append(Reading(meter.device_id, metric, float(value), unit, source))
 
@@ -135,8 +149,13 @@ class Evaluator:
 
         add(status_metric, MeterStatus.OK, "")
         out.states[key] = MeterStatus.OK.name
+        out.measured = True
         for metric, spec in profile.metrics.items():
+            if spec.since > version:
+                continue
             value = regs.read(spec.type, base + spec.offset)
-            add(metric, round_real32(value) if spec.type == "real32" else value, spec.unit)
+            add(metric, round_real32(value) if spec.type == "real32" else value, spec.unit, spec.valid_range)
         for metric, spec in profile.energy.items():
-            add(metric, regs.energy_wh(base + spec.mantissa, base + spec.exponent), spec.unit)
+            if spec.since > version:
+                continue
+            add(metric, regs.energy_scaled(base + spec.mantissa, base + spec.exponent), spec.unit)

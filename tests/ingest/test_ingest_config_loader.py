@@ -16,8 +16,8 @@ def test_real_config_loads_with_plc_and_meter():
     assert (plc.kind, plc.source) == ("plc", "real")
     assert (meter.kind, meter.source) == ("energy_meter", "real")
     assert meter.meta == {"profile": "finder_7m24", "block_base": 10, "serial": "F0183363",
-                          "poll_interval_s": 1.0, "energy_resolution_wh": 100.0}
-    assert plc.meta == {"map_version": 1}
+                          "poll_interval_s": 1.0, "energy_resolution_wh": 100.0, "reactive_resolution_varh": 100.0}
+    assert plc.meta == {"map_versions": [1, 2]}
 
 
 def test_ip_address_never_enters_device_metadata():

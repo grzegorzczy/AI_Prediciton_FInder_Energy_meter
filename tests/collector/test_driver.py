@@ -23,7 +23,7 @@ def plc_config(config, port, **changes):
     return dataclasses.replace(config, plc=plc)
 
 
-def test_reads_44_registers_from_the_fake_plc(config):
+def test_reads_60_registers_from_the_fake_plc(config):
     async def scenario():
         plc = FakePlc()
         await plc.start()
@@ -31,7 +31,7 @@ def test_reads_44_registers_from_the_fake_plc(config):
         driver = ModbusPlcDriver(cfg.plc)
         try:
             regs = await driver.read()
-            assert len(regs) == 44 and regs.start == 0
+            assert len(regs) == 60 and regs.start == 0
             assert regs.u16(2) == 1 and regs.ascii(40, 4) == "F0183363"
             assert set(plc.function_codes) == {4}
         finally:

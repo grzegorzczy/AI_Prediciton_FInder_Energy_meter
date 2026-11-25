@@ -66,7 +66,7 @@ def test_after_failure_next_read_needs_a_new_heartbeat_change(config, clock):
 
 
 def test_map_version_mismatch(config, clock):
-    result = Evaluator(config, clock).evaluate(image(config, map_version=2))
+    result = Evaluator(config, clock).evaluate(image(config, map_version=3))
     assert result.link_status == LinkStatus.MAP_VERSION_MISMATCH
     assert [(r.metric, r.value) for r in result.readings] == [("link_status", 3.0)]
 
@@ -75,7 +75,7 @@ def test_map_version_is_checked_before_heartbeat(config, clock):
     evaluator = Evaluator(config, clock)
     warm_up(evaluator, config)
     clock.advance(60)                                                       # heartbeat dawno nie zmieniony
-    assert evaluator.evaluate(image(config, heartbeat=2, map_version=2)).link_status == LinkStatus.MAP_VERSION_MISMATCH
+    assert evaluator.evaluate(image(config, heartbeat=2, map_version=3)).link_status == LinkStatus.MAP_VERSION_MISMATCH
 
 
 def test_heartbeat_exactly_five_seconds_is_not_stale_but_more_is(config, clock):
@@ -165,7 +165,7 @@ def test_serial_mismatch_blocks_only_that_meter(make_config, clock):
     """U2: pomyłka w jednym liczniku nie blokuje drugiego (konfiguracja z dwoma licznikami: bazy 10 i 60)."""
 
     def two_meters(raw):
-        raw["plc"]["read"]["count"] = 94
+        raw["plc"]["read"]["count"] = 110
         raw["devices"].append({"id": "finder_2", "name": "Licznik 2", "kind": "energy_meter", "source": "real",
                                "profile": "finder_7m24", "block_base": 60, "serial": "F9999999"})
 
@@ -173,7 +173,7 @@ def test_serial_mismatch_blocks_only_that_meter(make_config, clock):
 
     def both(hb, serial2):
         words = build_image(heartbeat=hb, meters=((10, {}), (60, {"serial": serial2, "voltage": 231.0})))
-        return Registers(0, words[:94])
+        return Registers(0, words[:110])
 
     evaluator = Evaluator(config, clock)
     assert evaluator.evaluate(both(1, "F0000000")).link_status is None

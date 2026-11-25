@@ -14,7 +14,7 @@ from pymodbus.constants import ExcCodes
 from pymodbus.server import ModbusTcpServer
 from pymodbus.simulator import DataType, SimData, SimDevice
 
-REGISTER_COUNT = 100
+REGISTER_COUNT = 120            # mapa v2: blok licznika 50 rejestrów, drugi licznik w bazie 60 sięga do 109
 
 # Wartości z odczytu na żywym liczniku 23.11.2026 (docs/modbus-map.md).
 SAMPLE_METER = {
@@ -24,6 +24,9 @@ SAMPLE_METER = {
     "energy_import_kwh": 3.5, "energy_export_kwh": 0.0,
     "import_mant": 35, "import_exp": 2, "export_mant": 0, "export_exp": 2,
     "serial": "F0183363",
+    # Mapa v2 (docs/modbus-map.md, rejestry 44-59), wartości z pomiaru PLC-1 z 25.11.2026:
+    "reactive_pos_mant": 0, "reactive_pos_exp": 2, "reactive_neg_mant": 45, "reactive_neg_exp": 2,   # n2 = 0, n4 = 4,5 kvarh
+    "thd_voltage": 2.34, "thd_current": 140.22, "phase_angle": -50.58, "meter_temperature": 30.2, "run_time": 1256171.0,
 }
 
 
@@ -43,10 +46,11 @@ def words_ascii(text: str, registers: int) -> list[int]:
     return list(struct.unpack(f">{registers}H", text.encode("ascii").ljust(2 * registers, b"\x00")))
 
 
-def meter_block(**overrides) -> list[int]:
-    """Blok licznika (offsety 0-33 wg mapy), 34 rejestry."""
+def meter_block(v2: bool = False, **overrides) -> list[int]:
+    """Blok licznika wg mapy: offsety 0-33 (v1) i, gdy `v2`, 34-49 (energia bierna, THD, kąt, temperatura, czas pracy).
+    Bez `v2` offsety 34-49 są zerami (tak wygląda PLC v1); `v2=True` przy map_version = 1 daje „śmieci” w polu v2."""
     m = {**SAMPLE_METER, **overrides}
-    block = [0] * 34
+    block = [0] * 50
     block[0], block[1], block[2] = m["status"], m["error_code"], m["error_count"]
     block[4:6] = words_u32(m["data_age_ms"])
     for offset, key in ((6, "active_power"), (8, "reactive_power"), (10, "apparent_power"), (12, "power_factor"),
@@ -58,16 +62,26 @@ def meter_block(**overrides) -> list[int]:
     block[27:29] = words_i32(m["export_mant"])
     block[29] = m["export_exp"] & 0xFFFF
     block[30:34] = words_ascii(m["serial"], 4)
+    if v2:
+        block[34:36] = words_i32(m["reactive_pos_mant"])
+        block[36] = m["reactive_pos_exp"] & 0xFFFF
+        block[37:39] = words_i32(m["reactive_neg_mant"])
+        block[39] = m["reactive_neg_exp"] & 0xFFFF
+        for offset, key in ((40, "thd_voltage"), (42, "thd_current"), (44, "phase_angle"), (46, "meter_temperature"),
+                            (48, "run_time")):
+            block[offset:offset + 2] = words_f32(m[key])
     return block
 
 
-def build_image(heartbeat: int = 1, map_version: int = 1, meters=((10, {}),)) -> list[int]:
-    """Cały obraz 100 rejestrów: nagłówek (heartbeat, map_version) i bloki liczników (baza, nadpisania)."""
+def build_image(heartbeat: int = 1, map_version: int = 1, meters=((10, {}),), v2: bool | None = None) -> list[int]:
+    """Cały obraz 100 rejestrów: nagłówek (heartbeat, map_version) i bloki liczników (baza, nadpisania).
+    Pola v2 (offsety 34-49) są wypełnione, gdy map_version >= 2; `v2=True/False` wymusza to niezależnie od wersji."""
     image = [0] * REGISTER_COUNT
     image[0:2] = words_u32(heartbeat)
     image[2] = map_version
+    with_v2 = (map_version >= 2) if v2 is None else v2
     for base, overrides in meters:
-        image[base:base + 34] = meter_block(**overrides)
+        image[base:base + 50] = meter_block(v2=with_v2, **overrides)
     return image
 
 
@@ -113,8 +127,10 @@ class FakePlc:
     def get_registers(self, address: int, count: int) -> list[int]:
         return list(self.image[address:address + count])
 
-    def set_meter(self, base: int = 10, **overrides) -> None:
-        self.set_registers(base, meter_block(**overrides))
+    def set_meter(self, base: int = 10, v2: bool | None = None, **overrides) -> None:
+        """Blok licznika; pola v2 wypełnione, gdy `v2` (domyślnie: gdy w obrazie map_version >= 2)."""
+        with_v2 = (self.image[2] >= 2) if v2 is None else v2
+        self.set_registers(base, meter_block(v2=with_v2, **overrides))
 
     def set_map_version(self, version: int) -> None:
         self.set_registers(2, [version])

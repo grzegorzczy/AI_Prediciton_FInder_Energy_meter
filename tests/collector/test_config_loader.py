@@ -11,7 +11,7 @@ from dbtools import REPO
 def test_real_config_loads():
     config = load_config(REPO / "config" / "devices.yaml")
     assert (config.site, config.line) == ("zaklad1", "linia1")
-    assert config.plc.device_id == "plc-01" and config.plc.read_count == 44 and config.plc.map_version == 1
+    assert config.plc.device_id == "plc-01" and config.plc.read_count == 60 and config.plc.map_versions == (1, 2)
     assert config.plc.timeout_s == 2.0 and config.plc.reconnect_max_s == 10 and config.plc.link_metric == "link_status"
     [meter] = config.meters
     assert meter.device_id == "finder_7m24_1" and meter.serial == "F0183363" and meter.block_base == 10

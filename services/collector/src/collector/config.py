@@ -26,6 +26,8 @@ class FieldSpec:
     unit: str = ""
     metric: str | None = None          # brak = pole tylko do logu / oceny, nie publikujemy
     omit_value: int | None = None      # wartość wskaźnikowa, przy której metryki nie publikujemy
+    since: int = 1                     # najniższa wersja mapy, od której pole jest publikowane (v2: since 2)
+    valid_range: tuple[float, float] | None = None   # filtr wiarygodności (nie dane katalogowe): spoza zakresu = nie publikujemy
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class EnergySpec:
     mantissa: int
     exponent: int
     unit: str
+    since: int = 1
 
 
 @dataclass(frozen=True)
@@ -73,7 +76,7 @@ class PlcConfig:
     timeout_s: float
     reconnect_initial_s: float
     reconnect_max_s: float
-    map_version: int
+    map_versions: tuple[int, ...]       # wersje mapy akceptowane w rejestrze map_version (v1 i v2 jednocześnie)
     map_version_offset: int
     heartbeat_offset: int
     heartbeat_timeout_s: float
@@ -94,6 +97,13 @@ def _require(mapping: dict, key: str, where: str) -> Any:
     return mapping[key]
 
 
+def _since(raw: dict, where: str) -> int:
+    since = raw.get("since", 1)
+    if isinstance(since, bool) or not isinstance(since, int) or since < 1:
+        raise ConfigError(f"{where}: since musi być liczbą całkowitą >= 1")
+    return since
+
+
 def _field(raw: dict, where: str, with_unit: bool = False) -> FieldSpec:
     kind = _require(raw, "type", where)
     if kind not in TYPE_LENGTH:
@@ -101,12 +111,22 @@ def _field(raw: dict, where: str, with_unit: bool = False) -> FieldSpec:
     metric = raw.get("metric")
     if metric is not None and not METRIC.match(metric):
         raise ConfigError(f"{where}: niedozwolona nazwa metryki '{metric}'")
+    since = _since(raw, where)
+    valid_range = raw.get("valid_range")
+    if valid_range is not None:
+        if (not isinstance(valid_range, (list, tuple)) or len(valid_range) != 2
+                or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in valid_range)
+                or valid_range[0] > valid_range[1]):
+            raise ConfigError(f"{where}: valid_range musi być parą [min, max] liczb, min <= max")
+        valid_range = (float(valid_range[0]), float(valid_range[1]))
     return FieldSpec(
         offset=int(_require(raw, "offset", where)),
         type=kind,
         unit=str(raw.get("unit", "")),
         metric=metric,
         omit_value=raw.get("omit_value"),
+        since=since,
+        valid_range=valid_range,
     )
 
 
@@ -127,6 +147,7 @@ def _profile(name: str, raw: dict) -> Profile:
             mantissa=int(_require(spec, "mantissa", f"{where}.energy.{metric}")),
             exponent=int(_require(spec, "exponent", f"{where}.energy.{metric}")),
             unit=str(spec.get("unit", "")),
+            since=_since(spec, f"{where}.energy.{metric}"),
         )
     serial = _require(raw, "serial", where)
     status = _field(_require(raw, "status", where), f"{where}.status")
@@ -145,6 +166,12 @@ def _profile(name: str, raw: dict) -> Profile:
     )
 
 
+def _since_by_field(profile: Profile) -> list[tuple[str, int]]:
+    out = [(name, spec.since) for name, spec in profile.metrics.items()]
+    out += [(name, spec.since) for name, spec in profile.energy.items()]
+    return out
+
+
 def _spans(profile: Profile) -> list[tuple[str, int, int]]:
     out = [("status", profile.status.offset, 1)]
     for label, spec in (("error_code", profile.error_code), ("error_count", profile.error_count),
@@ -158,6 +185,15 @@ def _spans(profile: Profile) -> list[tuple[str, int, int]]:
         out.append((name + ".exponent", spec.exponent, 1))
     out.append(("serial", profile.serial_offset, profile.serial_registers))
     return out
+
+
+def _map_versions(raw: Any) -> tuple[int, ...]:
+    ok = (isinstance(raw, (list, tuple)) and raw
+          and all(isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 0xFFFF for v in raw)
+          and len(set(raw)) == len(raw))
+    if not ok:
+        raise ConfigError("plc.map_versions: oczekiwana niepusta lista różnych liczb całkowitych 1-65535")
+    return tuple(raw)
 
 
 def load_config_dict(raw: dict) -> Config:
@@ -187,7 +223,7 @@ def load_config_dict(raw: dict) -> Config:
         timeout_s=float(_require(p, "timeout_s", "plc")),
         reconnect_initial_s=float(_require(reconnect, "initial_s", "plc.reconnect")),
         reconnect_max_s=float(_require(reconnect, "max_s", "plc.reconnect")),
-        map_version=int(_require(p, "map_version", "plc")),
+        map_versions=_map_versions(_require(p, "map_versions", "plc")),
         map_version_offset=int(_require(_require(p, "map_version_register", "plc"), "offset", "plc.map_version_register")),
         heartbeat_offset=int(_require(_require(p, "heartbeat", "plc"), "offset", "plc.heartbeat")),
         heartbeat_timeout_s=float(_require(p, "heartbeat_timeout_s", "plc")),
@@ -227,6 +263,10 @@ def load_config_dict(raw: dict) -> Config:
         if source not in SOURCES:
             raise ConfigError(f"devices.{dev_id}.source='{source}': dozwolone real lub sim")
         profile = profiles[profile_name]
+        newest = max(plc.map_versions)
+        for label, since in _since_by_field(profile):
+            if since > newest:
+                raise ConfigError(f"{profile_name}.{label}: since={since} nie występuje w plc.map_versions {list(plc.map_versions)}")
         base = int(_require(dev, "block_base", f"devices.{dev_id}"))
         for label, offset, length in _spans(profile):
             if offset + length > profile.block_size:

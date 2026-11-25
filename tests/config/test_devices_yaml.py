@@ -57,8 +57,8 @@ def test_plc_connection_follows_contract(cfg):
     assert plc["port"] == 502
     assert plc["unit_id"] == 1
     assert plc["function"] == 4, "kontrakt dopuszcza wyłącznie FC04 (odczyt)"
-    assert plc["read"] == {"start": 0, "count": 44}
-    assert plc["map_version"] == 1
+    assert plc["read"] == {"start": 0, "count": 60}
+    assert plc["map_versions"] == [1, 2]
     assert plc["heartbeat_timeout_s"] == 5
     assert plc["poll_interval_s"] > 0
 

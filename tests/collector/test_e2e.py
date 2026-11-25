@@ -204,7 +204,7 @@ def test_wrong_map_version_gives_link_status_3(config):
     async def scenario():
         async with Harness(config) as h:
             await h.until(h.value_is("plc-01/link_status", 0))
-            h.plc.set_map_version(2)
+            h.plc.set_map_version(3)
             mark = time.monotonic()
             await h.until(h.value_is("plc-01/link_status", 3, since=mark))
             detected = time.monotonic()
@@ -299,4 +299,30 @@ def test_health_marker_is_refreshed(config):
             await asyncio.sleep(1.0)
             assert health.is_fresh(h.health_file, max_age_s=1.0)
 
+    run(scenario())
+
+
+V2_TOPICS = {f"finder_7m24_1/{m}" for m in (
+    "reactive_pos_varh", "reactive_neg_varh", "thd_voltage", "thd_current", "phase_angle", "meter_temperature", "run_time")}
+
+
+def test_v1_then_v2_in_flight_reads_60_registers_with_fc04_only(config):
+    """E2-PLC2: collector czyta 0-59 na v1 (13 tematów), po przełączeniu atrapy na v2 dochodzi 7 tematów (20), bez restartu."""
+    async def scenario():
+        async with Harness(config) as h:
+            await h.until(h.value_is("plc-01/link_status", 0))
+            mark = time.monotonic()
+            await asyncio.sleep(0.8)
+            v1_topics = {m[1][len(PREFIX):] for m in h.listener.since(mark)}
+            assert v1_topics == EXPECTED_TOPICS and not (v1_topics & V2_TOPICS)        # v1: dokładnie jak dotąd
+            h.plc.set_map_version(2)
+            h.plc.set_meter(v2=True)
+            mark2 = time.monotonic()
+            await h.until(lambda: (h.latest("finder_7m24_1/thd_current", mark2) or {}).get("value") == 140.22)
+            latest = {t: h.latest(t, mark2) for t in V2_TOPICS}
+            assert latest["finder_7m24_1/phase_angle"]["value"] == -50.58 and latest["finder_7m24_1/phase_angle"]["unit"] == "°"
+            assert latest["finder_7m24_1/meter_temperature"]["unit"] == "°C" and latest["finder_7m24_1/run_time"]["value"] == 1256171.0
+            assert latest["finder_7m24_1/reactive_neg_varh"] == {**latest["finder_7m24_1/reactive_neg_varh"], "value": 4500.0, "unit": "varh"}
+            assert all(latest.values()), "brak któregoś tematu v2"
+            h.assert_only_reads()
     run(scenario())

@@ -69,6 +69,8 @@ async def run(
     states = state_logger or StateLogger(clock)
     failing = False
     abandoned_logged = False
+    last_version: int | None = None
+    last_skipped: tuple[str, ...] = ()
     pending: asyncio.Task | None = None
     started = 0.0
     cycle_start = clock()
@@ -116,8 +118,22 @@ async def run(
                 else:
                     evaluation = Evaluation(link_status=None)        # wolna odpowiedź: cykl bez publikacji
 
-            if evaluation.skipped:
-                LOG.warning("pominięto metryki o wartości nieskończonej lub NaN: %s", ", ".join(evaluation.skipped))
+            if evaluation.map_version is not None and evaluation.map_version != last_version:
+                if last_version is None:
+                    LOG.info("mapa rejestrów PLC: wersja %d", evaluation.map_version)
+                else:
+                    LOG.info("zmiana wersji mapy rejestrów PLC: %d -> %d", last_version, evaluation.map_version)
+                last_version = evaluation.map_version
+            # Pominięte metryki (nie liczba skończona albo spoza valid_range): WARNING raz na zmianę zestawu, nie w każdym cyklu.
+            if evaluation.measured:             # tylko cykle z pełnym odczytem pomiarów (nie epizody błędu licznika, nie awarie PLC)
+                skipped = tuple(sorted(evaluation.skipped))
+                if skipped != last_skipped:
+                    if skipped:
+                        LOG.warning("pomijam metryki o wartości niewiarygodnej (nie liczba skończona lub spoza zakresu): %s",
+                                    ", ".join(skipped))
+                    else:
+                        LOG.info("wszystkie metryki znów wiarygodne (koniec pomijania)")
+                    last_skipped = skipped
             if evaluation.readings:
                 publisher.publish_batch(
                     [build_message(config.site, config.line, reading, ts) for reading in evaluation.readings]
@@ -164,7 +180,7 @@ async def _amain() -> int:
         LOG.error("brak zmiennej środowiskowej %s", exc)
         return 2
 
-    buffer_max = int(os.environ.get("COLLECTOR_BUFFER_MAX", "20000"))
+    buffer_max = int(os.environ.get("COLLECTOR_BUFFER_MAX", "30000"))
     transport = PahoTransport(
         os.environ.get("MQTT_HOST", "mosquitto"), int(os.environ.get("MQTT_PORT", "1883")), mqtt_user, mqtt_password
     )

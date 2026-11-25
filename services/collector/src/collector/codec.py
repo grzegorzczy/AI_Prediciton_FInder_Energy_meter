@@ -70,13 +70,15 @@ class Registers:
             return self.real32(address)
         raise RegisterError(f"nieznany typ rejestru: {kind}")
 
-    def energy_wh(self, mantissa_address: int, exponent_address: int) -> float:
-        """Stan licznika w Wh = mantysa x 10^wykładnik (arytmetyka całkowita dla wykładnika >= 0)."""
+    def energy_scaled(self, mantissa_address: int, exponent_address: int) -> float:
+        """Stan licznika energii (Wh albo varh) = mantysa x 10^wykładnik (arytmetyka całkowita dla wykładnika >= 0)."""
         mantissa = self.i32(mantissa_address)
         exponent = self.i16(exponent_address)
         if exponent >= 0:
             return float(mantissa * 10**exponent)
         return mantissa / 10 ** (-exponent)
+
+    energy_wh = energy_scaled       # dotychczasowa nazwa (energia czynna), ta sama operacja
 
 
 def round_real32(value: float) -> float:

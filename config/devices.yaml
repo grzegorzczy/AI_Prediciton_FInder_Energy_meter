@@ -12,13 +12,13 @@ plc:
   port: 502
   unit_id: 1
   function: 4                  # Read Input Registers; jedyna używana funkcja (reguła 1: nigdy nie piszemy do PLC)
-  read: { start: 0, count: 44 }   # rejestry 0–43 jednym zapytaniem
+  read: { start: 0, count: 60 }   # rejestry 0–59 jednym zapytaniem dla obu wersji mapy (na v1 rejestry 44–59 = 0)
   poll_interval_s: 1.0
   timeout_s: 2.0               # limit jednego zapytania; collector nie ponawia w bibliotece (retries=0)
   reconnect: { initial_s: 1, max_s: 10 }   # cofanie wykładnicze po utracie połączenia
   link_metric: link_status     # metryka stanu łącza z PLC (kody: docs/status-codes.md)
   source: real                 # źródło ładunku dla plc-01 (real/sim)
-  map_version: 1               # rejestr 2 musi się zgadzać; inna wartość = błąd konfiguracji
+  map_versions: [1, 2]         # wersje mapy akceptowane w rejestrze 2 (v1 i v2 jednocześnie); inna wartość = link_status 3
   heartbeat_timeout_s: 5       # rejestry 0–1 bez zmiany dłużej niż to = "PLC zatrzymany"
   heartbeat: { offset: 0, type: uint32 }
   map_version_register: { offset: 2, type: uint16 }
@@ -40,11 +40,22 @@ profiles:
       frequency: { offset: 14, type: real32, unit: Hz }
       voltage: { offset: 16, type: real32, unit: V }
       current: { offset: 18, type: real32, unit: A }
+      # Mapa v2 (since: 2): publikowane tylko przy map_version >= 2 i meter_status = 0.
+      # valid_range to FILTR WIARYGODNOŚCI (śmieci, wartości niemożliwe fizycznie), a nie dane katalogowe licznika:
+      # wartość spoza zakresu nie jest publikowana (WARNING raz na zmianę stanu).
+      thd_voltage: { offset: 40, type: real32, unit: "%", since: 2, valid_range: [0, 100] }
+      thd_current: { offset: 42, type: real32, unit: "%", since: 2, valid_range: [0, 1000] }
+      phase_angle: { offset: 44, type: real32, unit: "°", since: 2, valid_range: [-180, 180] }   # ujemny przy Q < 0 (zmierzone 25.11)
+      meter_temperature: { offset: 46, type: real32, unit: "°C", since: 2, valid_range: [-50, 150] }
+      run_time: { offset: 48, type: real32, unit: s, since: 2, valid_range: [0, 4.3e+9] }
     # Stan licznika w Wh = mantysa × 10^wykładnik (nie z REAL kWh, który traci rozdzielczość).
     energy:
       # resolution_wh: rozdzielczość stanu licznika (wykładnik 2 w rejestrze 36 = 100 Wh); trafia do devices.meta (agregaty energii)
       energy_import_wh: { mantissa: 24, exponent: 26, unit: Wh, resolution_wh: 100 }
       energy_export_wh: { mantissa: 27, exponent: 29, unit: Wh, resolution_wh: 100 }
+      # Energia bierna (v2): nazwy wg znaku Q, nie kierunku przepływu: n2 przy Q > 0, n4 przy Q < 0 (docs/modbus-map.md)
+      reactive_pos_varh: { mantissa: 34, exponent: 36, unit: varh, resolution_varh: 100, since: 2 }
+      reactive_neg_varh: { mantissa: 37, exponent: 39, unit: varh, resolution_varh: 100, since: 2 }
     serial: { offset: 30, type: ascii, registers: 4 }
 
 devices:
@@ -53,5 +64,5 @@ devices:
     kind: energy_meter
     source: real
     profile: finder_7m24
-    block_base: 10             # rejestry 10–59 (blok 50); czytamy 10–43
+    block_base: 10             # rejestry 10–59 (blok 50), czytamy całość (v2 zajmuje offsety 34–49)
     serial: F0183363           # niezgodność = błąd konfiguracji tego licznika
