@@ -46,7 +46,7 @@ Nie ma już czego naprawiać z sudo: **stare uszkodzone pliki `json-file` należ
 
 ## 5. Migracja 011 (`ipc_reboot`) – szkic
 
-`docs/handoff/e2-k8a-011-draft.sql` (poza `db/migrations/`, żeby nie wdrożyła się przedwcześnie). Rodzaj `ipc_reboot` nie wymaga zmiany ograniczenia (wzorzec `^[a-z0-9_]+$`). Granice weźmiemy z bazy po teście: ostatni wiersz przed restartem i pierwszy po nim; `exclude_from_analytics = TRUE`. Po dodaniu: poprawić `tests/db/test_data_windows.py` (lista rodzajów, liczba 13 → 14) – opisane w szkicu.
+~~`docs/handoff/e2-k8a-011-draft.sql`~~ (szkic zastąpiony migracją, patrz sekcja 10; poza `db/migrations/`, żeby nie wdrożyła się przedwcześnie). Rodzaj `ipc_reboot` nie wymaga zmiany ograniczenia (wzorzec `^[a-z0-9_]+$`). Granice weźmiemy z bazy po teście: ostatni wiersz przed restartem i pierwszy po nim; `exclude_from_analytics = TRUE`. Po dodaniu: poprawić `tests/db/test_data_windows.py` (lista rodzajów, liczba 13 → 14) – opisane w szkicu.
 
 ## 6. Szkic `docs/stages/etap-2.md`
 
@@ -82,4 +82,38 @@ Grafana 148,7 MiB / 512; ingest 26,0 / 128; collector 23,7 / 128; timescaledb 41
 3. Luka 16 s przy wdrożeniu bez okna w `data_windows` – akceptujesz?
 4. Test restartu czeka na Grzegorza; po nim migracja 011 i część B (kompresja, RAM po dobie, krok n4 – nazwa metryki `reactive_neg_varh`).
 
-Stop: czekam na test restartu (Grzegorz) i review architekta.
+
+
+## 10. Wynik testu restartu (25.11.2026, wykonał Grzegorz: `sudo reboot`)
+
+Czyste zamknięcie (nie utrata zasilania). Czasy UTC, z dziennika systemu, `docker inspect` i bazy:
+
+| Zdarzenie | Czas UTC |
+| --- | --- |
+| ostatni wiersz w bazie przed przerwą | 12:03:47.557 |
+| zatrzymanie collectora / bazy / ingestu przez systemd | 12:03:48.000 / 12:03:48.028 / 12:03:49 |
+| koniec poprzedniego rozruchu w dzienniku | 12:03:54 |
+| start jądra (nowy rozruch) | 12:04:08 |
+| start Dockera (`Started Docker Application Container Engine`) | 12:04:19 |
+| start kontenerów aip-* i smartWARE | 12:04:21–12:04:22 |
+| start collectora, `plc: (start) -> OK` | 12:04:23.674, 12:04:24.708 |
+| **pierwszy wiersz w bazie po restarcie** | **12:04:24.705** |
+
+- **Luka w danych: 37,148 s** (ostatni wiersz → pierwszy po). Od startu jądra do pierwszego wiersza 16,7 s; od polecenia `reboot` ok. 37 s. Kryterium „< 5 min” spełnione z dużym zapasem. Po luce w każdej sekundzie dokładnie 20 wierszy (zapytanie o sekundy z n ≠ 20: 0 wierszy).
+- **Autostart:** wszystkie 5 aip-* wstało samo (`restart: unless-stopped`, Docker `enabled`), bez `docker compose up`; przy pierwszym sprawdzeniu (kilkanaście sekund po starcie kontenerów) 4 `healthy`, Grafana `health: starting`, po minucie wszystkie `healthy`. `RestartCount` = 0 dla wszystkich.
+- **`aip-migrate`:** nie uruchomił się ponownie (`StartedAt` 11:58:13, bez zmian), `schema_migrations` bez zmian.
+- **Zachowanie usług:** collector i ingest zalogowały czyste zatrzymanie i start; ingest przy zatrzymaniu bazy zapisał „baza niedostępna … oczekujących: 14” (14 wiadomości bez potwierdzenia wróciło z brokera po wznowieniu sesji trwałej, bez duplikatów, `ON CONFLICT DO NOTHING`; sekunda 12:03:47 ma komplet 20 wierszy). Logi `docker logs` czytelne przed i po restarcie (sterownik `local`). Pętli ponowień z backoffem nie było potrzeba: Mosquitto i baza wstały przed collectorem i ingestem.
+- **smartWARE** (tylko odczyt `docker ps`): wszystkie 7 kontenerów wstało 12:04:21–22 i po minucie `healthy` (`mqtt` i `postgres-server` bez healthchecka, Up). Ich logi nadal `json-file` (nie ruszane).
+- **Grafana po rozruchu:** `/api/health` ok; pamięć 353 MiB / 512 po minucie, `memory.peak` 418 050 048 B (398,7 MiB = 77,9 % limitu), `oom_kill` = 0. To wyraźnie więcej niż 148,7 MiB po wcześniejszym wdrożeniu (start pod obciążeniem po rozruchu, gdy wstają też kontenery smartWARE); poniżej 80 %, ale blisko – do obserwacji w części B.
+- **Czas SSH:** pierwsza próba Grzegorza po restarcie (timeout), druga udana ok. 12:04:33 UTC (kontenery „Up 11 seconds”), czyli ok. 45 s od polecenia (stoper od Grzegorza: do uzupełnienia, jeśli go zmierzył).
+
+### Migracja 011 (okno `ipc_reboot`)
+
+`db/migrations/011_data_windows_ipc_reboot.sql` z granicami 12:03:47.557 – 12:04:24.705 UTC (`exclude_from_analytics = TRUE`), test `test_ipc_reboot_window_matches_the_measured_gap`, liczba okien 13 → 14. Testy `tests/db` (data_windows, migrations, roles): 26 passed. Wdrożona przez R-1 (12:07:40 UTC): `applied 011`, `schema_migrations` 11 wierszy; odtworzona tylko Grafana i `migrate` (zależność od `migrate`), collector/ingest/baza/Mosquitto bez restartu, dane dalej 20 wierszy/s (1100 w 55 s). Jednocześnie `docs/stages/etap-2.md` zaktualizowany (11 migracji, 14 okien, pozycja 14 – wynik).
+
+## 11. Stan części A i dalej
+
+Część A zakończona. Do Grzegorza: zrzut z Grafany (np. dashboard „Jakość”, zakres 12:00–12:10 UTC) z adnotacją `ipc_reboot` i luką do dokumentacji (docs/images/etap2, nazwa wg dokumentu 04), oraz ewentualny czas ze stopera.
+Część B (po 26.11 00:00 UTC; RAM po dobie od 25.11 11:58 UTC, więc najwcześniej 26.11 po 12:00 UTC): kompresja i rozmiar, RAM vs `mem_limit` z `memory.peak` i `oom_kill`, krok n4 (`reactive_neg_varh` 4800 → 4900), uzupełnienie `etap-2.md`.
+
+Stop: czekam na review architekta części A.
