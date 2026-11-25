@@ -19,9 +19,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from grafana_support import RANGES, dashboards, ds_query, effective_seconds, expand_vars, panel_targets  # noqa: E402
 
 
+MAX_PROD_RANGE_S = 7 * 86400   # zakresy dłuższe niż 7 dni nie są uruchamiane na produkcyjnej Grafanie
+PAUSE_S = float(os.environ.get("PROD_PANELS_PAUSE_S", "0.2"))   # przerwa między zapytaniami; zapytania idą pojedynczo (bez współbieżności)
+
+
 def main(argv: list[str]) -> int:
     device = argv[0] if argv and argv[0] not in RANGES else "finder_7m24_1"
     ranges = [a for a in argv if a in RANGES] or ["15m", "6h", "24h", "7d"]
+    # k8: produkcyjna Grafana ma limit pamięci; długie zakresy tylko na aip-test (tests/run-tests.sh), nie tutaj
+    too_long = [r for r in ranges if RANGES[r] > MAX_PROD_RANGE_S]
+    if too_long:
+        print(f"Odmowa: zakres {too_long} jest za długi dla produkcji (max 7d); użyj środowiska aip-test.", file=sys.stderr)
+        return 2
     failures, total = 0, 0
     print(f"{'dashboard':12} {'zakres':6} {'wiersze':>8} {'ms':>6}  panel")
     for name, dash in dashboards().items():
@@ -35,6 +44,7 @@ def main(argv: list[str]) -> int:
                 # panel z własnym zakresem czasu (timeFrom) używa go zamiast zakresu pulpitu
                 result = ds_query(sql, target["format"], end - effective_seconds(panel, RANGES[range_name]), end, target["refId"])
                 total += 1
+                time.sleep(PAUSE_S)
                 if result["error"]:
                     failures += 1
                     print(f"BŁĄD {name}/{title}[{target['refId']}] {range_name}: {result['error']}")

@@ -253,7 +253,7 @@ inaczej polecenie czyta resztę skryptu ze standardowego wejścia i przerywa wyk
 ## Grafana (od k7)
 
 Usługa `grafana` (kontener `aip-grafana`) startuje ze stosem: obraz **`grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2`** (wersja 13.0.2, wybrana 24.11.2026 jako
-najnowsza stabilna główna; digest sprawdzony po `docker pull` na komputerze), użytkownik 472 (nie-root), `mem_limit` 384 MB, port **3000 na wszystkich interfejsach, HTTP bez TLS** (sieć biurowa, świadoma akceptacja dla demo;
+najnowsza stabilna główna; digest sprawdzony po `docker pull` na komputerze), użytkownik 472 (nie-root), `mem_limit` 512 MB (od k8; 384 MB kończyło się OOM-killerem) i `GOMEMLIMIT=400MiB`, port **3000 na wszystkich interfejsach, HTTP bez TLS** (sieć biurowa, świadoma akceptacja dla demo;
 TLS i odwrotne proxy w etapie 7). Dashboardy i źródło danych są plikami w repo (`grafana/`), montowanymi tylko do odczytu. Opis dla użytkownika: `docs/grafana.md`.
 
 **Klucz `GF_SECURITY_SECRET_KEY` (G7-g).** Szyfruje sekrety w bazie Grafany (m.in. hasło `app_reader` w źródle danych) i musi być w `.env` **przed pierwszym startem** wolumenu `aip_grafana_data`;
