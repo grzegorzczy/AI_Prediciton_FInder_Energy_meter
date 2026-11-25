@@ -1,6 +1,8 @@
-# Mapa Modbus TCP: variTRON 300 → collector (kontrakt, wersja 1)
+# Mapa Modbus TCP: variTRON 300 → collector (kontrakt, wersja 2)
 
-Stan na 23.11.2026, etap 1. Zweryfikowane na sprzęcie: `mbpoll` z komputera `jumo-ipc` (192.168.0.213) odczytał rejestry 0–43 i wartości REAL zgodne z podglądem online w CODESYS.
+**Wersja 2 (25.11.2026, E2-PLC2):** rejestry 44–59 (offsety bloku 34–49) zajęte przez energię bierną, THD, kąt, temperaturę i czas pracy licznika; rejestry 0–43 bez zmian. Obowiązuje w PLC od przełączenia w kroku PLC-2 (data i godzina – w tabeli okien `data_windows`). Collector obsługuje **v1 i v2 jednocześnie**.
+
+Wersja 1: stan na 23.11.2026, etap 1. Zweryfikowane na sprzęcie: `mbpoll` z komputera `jumo-ipc` (192.168.0.213) odczytał rejestry 0–43 i wartości REAL zgodne z podglądem online w CODESYS.
 Zmiana tego kontraktu = zmiana `MAP_VERSION` w PLC (rejestr 2) + nowa wersja tego dokumentu. Claude Code tego pliku nie zmienia, zgłasza potrzebę zmiany.
 
 ## Połączenie
@@ -12,7 +14,7 @@ Zmiana tego kontraktu = zmiana `MAP_VERSION` w PLC (rejestr 2) + nowa wersja teg
 | Funkcja | **04 – Read Input Registers** (jedyna używana) |
 | Zakres | Input Registers 0–99, adresowanie od 0 (offset PDU) |
 | Wartości 32-bitowe | **starsze słowo pierwsze** (big-endian), w słowie starszy bajt pierwszy |
-| Maks. jedno zapytanie | 0–43 (44 rejestry) mieści się w jednym zapytaniu |
+| Zapytanie collectora | 0–59 (60 rejestrów) jednym zapytaniem FC04, dla v1 i v2 (na v1 rejestry 44–59 = 0; do potwierdzenia `mbpoll -c 60` przed wdrożeniem) |
 | Odświeżanie danych w PLC | pomiary co 1 s, identyfikacja co 10 s; sensowny cykl collectora: 1 s |
 
 ## Zasady
@@ -26,7 +28,7 @@ Zmiana tego kontraktu = zmiana `MAP_VERSION` w PLC (rejestr 2) + nowa wersja teg
 | Rejestr | Nazwa | Typ | Jednostka | Opis |
 | --- | --- | --- | --- | --- |
 | 0–1 | `heartbeat` | UDINT | – | +1 w każdym cyklu MainTask; przepełnienie → 0. Brak zmiany przez > 5 s = PLC nie działa / program zatrzymany |
-| 2 | `map_version` | UINT | – | = 1. Collector odrzuca inną wersję |
+| 2 | `map_version` | UINT | – | 1 albo 2. Collector przyjmuje 1 i 2 (przy 1 nie publikuje pól v2), każdą inną wersję odrzuca (`link_status` 3) |
 | 3–9 | – | – | – | zarezerwowane (0) |
 
 ## Blok licznika 1 – Finder 7M.24, nr ser. F0183363 (baza 10)
@@ -54,7 +56,21 @@ Kolejny licznik dostanie blok od bazy 60 (blok = 50 rejestrów, offsety jak niż
 | 37–38 | 27 | `energy_export_mant` | DINT | – | n3 |
 | 39 | 29 | `energy_export_exp` | INT | – | |
 | 40–43 | 30 | `serial` | 4 × WORD | ASCII | „F0183363”, 2 znaki na rejestr, starszy bajt pierwszy |
-| 44–59 | 34 | – | – | – | zarezerwowane (0) |
+| 44–45 | 34 | `reactive_pos_mant` | DINT | – | **v2.** n2 (30408–30409): varh = mant × 10^exp; energia bierna przy Q > 0 |
+| 46 | 36 | `reactive_pos_exp` | INT | – | **v2.** n2 (30402), obecnie 2 (rozdzielczość 100 varh) |
+| 47–48 | 37 | `reactive_neg_mant` | DINT | – | **v2.** n4 (30412–30413); energia bierna przy Q < 0 |
+| 49 | 39 | `reactive_neg_exp` | INT | – | **v2.** n4 (30404) |
+| 50–51 | 40 | `thd_voltage` | REAL | % | **v2.** THD U1 (32594) |
+| 52–53 | 42 | `thd_current` | REAL | % | **v2.** THD I1 (32588) |
+| 54–55 | 44 | `phase_angle` | REAL | ° | **v2.** kąt U1–I1 (32570); ujemny przy Q < 0 (zmierzone 25.11: −50,58° przy Q ≈ −8,7 var) |
+| 56–57 | 46 | `meter_temperature` | REAL | °C | **v2.** temperatura wewnętrzna licznika (32658), odświeżana w PLC co 10 s |
+| 58–59 | 48 | `run_time` | REAL | s | **v2.** czas pracy licznika (32480), odświeżany w PLC co 10 s; REAL dokładny do 1 s do 2^24 s (ok. 194 dni) |
+
+Blok licznika jest w v2 pełny (offsety 0–49). Liczniki o podwyższonej rozdzielczości (30462–30485) – etap 4, nowa wersja mapy.
+
+**Energia bierna n2/n4 (v2):** nazwy wg znaku Q, a nie „pobrana/oddana”. Stan 23.11.2026: n2 = 0, n4 = 4,5 kvarh, a obciążenie ma stale Q < 0 – stąd n4 = energia przy Q < 0. Potwierdzenie przy pierwszym kroku n4 o 100 varh (przy Q ≈ −9 var ok. 11 h). W konwencji odbiornika Q > 0 = indukcyjna, Q < 0 = pojemnościowa.
+
+**Kąt a współczynnik mocy:** przy THD prądu ok. 140 % PF (0,37) ≠ cos φ = cos(kąt) (0,64); PF = cos φ / √(1 + THD_I²). Zmierzone 25.11.2026 w PLC-1.
 
 n1 = energia pobrana – ustalone 23.11.2026 na żywym liczniku (przy P > 0 rośnie n1, n3 = 0); potwierdzenie stanem kWh z wyświetlacza – patrz etap 1.
 
@@ -67,7 +83,7 @@ n1 = energia pobrana – ustalone 23.11.2026 na żywym liczniku (przy P > 0 roś
 ## Jak collector ma oceniać ważność danych
 
 1. Brak połączenia TCP / timeout → status urządzenia „PLC offline”, pomiary nie są zapisywane.
-2. `map_version` ≠ 1 → błąd konfiguracji, nie zapisujemy.
+2. `map_version` ∉ {1, 2} → błąd konfiguracji, nie zapisujemy. Przy 1 – tylko pola v1.
 3. `heartbeat` bez zmiany przez > 5 s → „PLC zatrzymany”, pomiary nie są zapisywane.
 4. `status` ≠ 0 → pomiary licznika nieważne (wartości są zamrożone, „Keep last value”); zapisujemy tylko status.
 5. `serial` ≠ numer z `config/devices.yaml` → błąd konfiguracji (inny licznik pod tym blokiem).
@@ -75,8 +91,10 @@ n1 = energia pobrana – ustalone 23.11.2026 na żywym liczniku (przy P > 0 roś
 ## Test z komputera (tylko odczyt)
 
 ```bash
-# surowe rejestry 0–43
-mbpoll -m tcp -a 1 -t 3:hex -0 -r 0 -c 44 -1 192.168.0.246
+# surowe rejestry 0–59 (v2)
+mbpoll -m tcp -a 1 -t 3:hex -0 -r 0 -c 60 -1 192.168.0.246
+# wartości REAL v2 50–59 (THD U, THD I, kąt, temperatura, czas pracy)
+mbpoll -m tcp -a 1 -t 3:float -B -0 -r 50 -c 5 -1 192.168.0.246
 # wartości REAL 16–33 (‑B = starsze słowo pierwsze)
 mbpoll -m tcp -a 1 -t 3:float -B -0 -r 16 -c 9 -1 192.168.0.246
 ```

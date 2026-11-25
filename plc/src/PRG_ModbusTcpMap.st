@@ -31,6 +31,12 @@ VAR
     fbMeter1     : FB_EnergyMeter;
     iBase        : INT;
     i            : INT;
+    // E2-PLC2 step PLC-1: online check of new channels only (not mapped to TCP yet, map stays v1)
+    rChkAngle_deg  : REAL;
+    rChkThdI_pct   : REAL;
+    rChkThdU_pct   : REAL;
+    rChkTemp_C     : REAL;
+    rChkRunTime_s  : REAL;
 END_VAR
 // --- code ---
 // 1. Meter 1: Finder 7M.24 on COM (Modbus_Server_COM_Port, address 2)
@@ -74,3 +80,10 @@ GVL_Meter.awTcpInputRegs[iBase + OFS_E_EXP_EXP] := INT_TO_WORD(fbMeter1.iEnergyE
 FOR i := 0 TO 3 DO
     GVL_Meter.awTcpInputRegs[iBase + OFS_SERIAL + i] := fbMeter1.awSerial[i];
 END_FOR
+
+// 4. E2-PLC2 step PLC-1: decode new channels for online check (no effect on TCP map v1)
+rChkAngle_deg := FC_WordsToReal(wFirst := GVL_Meter.awFinder1Quality[0],  wSecond := GVL_Meter.awFinder1Quality[1],  xSwapWords := FALSE);
+rChkThdI_pct  := FC_WordsToReal(wFirst := GVL_Meter.awFinder1Quality[18], wSecond := GVL_Meter.awFinder1Quality[19], xSwapWords := FALSE);
+rChkThdU_pct  := FC_WordsToReal(wFirst := GVL_Meter.awFinder1Quality[24], wSecond := GVL_Meter.awFinder1Quality[25], xSwapWords := FALSE);
+rChkTemp_C    := FC_WordsToReal(wFirst := GVL_Meter.awFinder1Temp[0],     wSecond := GVL_Meter.awFinder1Temp[1],     xSwapWords := FALSE);
+rChkRunTime_s := FC_WordsToReal(wFirst := GVL_Meter.awFinder1RunTime[0],  wSecond := GVL_Meter.awFinder1RunTime[1],  xSwapWords := FALSE);
