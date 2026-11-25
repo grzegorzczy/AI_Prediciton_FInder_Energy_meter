@@ -89,6 +89,7 @@ Osobne agregaty obok `energy_1m` i `energy_1h` (te bez zmian), żeby nie usuwać
 | `energy_ext_1h` | 1 h | te same kolumny, złożone z minutowych (hierarchia); `first`/`last` z `FILTER` po kolumnie nie-NULL, bo `first()` bierze najwcześniejszy wiersz także wtedy, gdy ma NULL |
 
 Polityki jak dla `energy_1m`/`energy_1h` (odświeżanie 7 dni/1 min i 30 dni/15 min, kompresja po 14 i 60 dniach, retencja 1 rok i bez limitu, czas rzeczywisty).
+**`energy_1h` odtworzony migracją 009 (25.11.2026):** `first(import_first, bucket)` i `last(...)` (oraz dla `export_*`) mają teraz `FILTER (WHERE kolumna IS NOT NULL)`; w migracji 002 godzina, w której pierwsza lub ostatnia minuta nie miała energii (np. cała minuta błędu licznika), dostawała `import_first/last` = NULL. Widoki `energy_1h_calc` i `energy_daily_check` odtworzone z identycznymi definicjami.
 Dla okresu sprzed mapy v2 kolumny metryk v2 to NULL (liczności 0): **brak danych, nie zero**. Widok `reactive_1h_calc` (migracja `008`): przyrost liczników n2 i n4 względem poprzedniego
 wiaderka z odczytem (`LAG`, reset, `pos_gap_before` i `neg_gap_before`), całka mocy biernej w varh (`reactive_pos_integral_varh`, `reactive_neg_integral_varh` jako moduł),
 `coverage`, `bucket_complete`, rozdzielczość `resolution_varh` (100 varh) i okres próbkowania z `devices.meta`. Nazwy n2 i n4 wg znaku mocy biernej, nie kierunku przepływu (`docs/modbus-map.md`).
