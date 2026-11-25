@@ -1,6 +1,6 @@
 # Etap 3 – Symulator: decyzje do podjęcia (szkic architekta)
 
-Data: 2026-11-25. Status: **SZKIC – przygotowanie, etap 3 nie jest rozpoczęty.** Claude Code dostaje ten dokument
+Data: 2026-11-25. Status: **SZKIC – przygotowanie, etap 3 nie jest rozpoczęty.** Decyzje Grzegorza z 25.11.2026 (14:3x) – sekcja na końcu. Claude Code dostaje ten dokument
 dopiero po akceptacji `etap-2.md` przez Grzegorza; wtedy pisze plan `e3-k0-plan.md`.
 
 ## Co mówi plan (docs/plan.md, dokument projektu 03)
@@ -40,3 +40,14 @@ do MQTT, z pominięciem PLC. Powiększenie `awTcpInputRegs` i nowa wersja mapy s
 2. S2: kalendarz zmian.
 3. S6/S7/S8: zgoda na historię 1 min przez MQTT i odświeżenie agregatów.
 4. Czy wirtualne liczniki mają być „w tej samej linii” (`zaklad1/linia1`), czy w osobnej linii (`zaklad1/linia2`)?
+
+## Decyzje Grzegorza (25.11.2026)
+
+- **S1: zakład spożywczy** – piec / pasteryzator, agregat chłodniczy, mieszalnik, pakowaczka. Moce znamionowe:
+  propozycja w planie Claude Code (rząd kilku–kilkunastu kW), do akceptacji przy review planu.
+- **S2: 2 zmiany + sobota** – pon–pt 6:00–22:00, sobota 6:00–14:00, niedziela postój; agregat chłodniczy 24/7.
+- **S7/S8: historia 120 dni przez MQTT z rozdzielczością 1 min**, na żywo co 1 s; po wgraniu ręczne odświeżenie
+  agregatów, zanim retencja 90 dni skasuje najstarsze surowe dane.
+- **Linia MQTT: osobna `zaklad1/linia2`** dla urządzeń symulowanych; `zaklad1/linia1` = prawdziwy sprzęt.
+
+Pozostałe (S3–S6, S9–S11) – propozycje architekta, przyjęte domyślnie; do potwierdzenia przy review planu `e3-k0-plan.md`.
