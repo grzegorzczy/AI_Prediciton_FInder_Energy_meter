@@ -455,6 +455,222 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
+      "description": "THD napięcia (THD U): ostatnia wartość w oknie. Zawartość harmonicznych napięcia U1 [%] (mapa v2).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 3
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"THD napięcia (THD U)\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'thd_voltage' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "THD U",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "THD prądu (THD I): ostatnia wartość w oknie. Zawartość harmonicznych prądu I1 [%] (mapa v2). Zasilacze impulsowe dają wartości rzędu 100–150%. Przy małym prądzie względem zakresu licznika (80 mA wobec 40 A) wartość może być niepewna.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 6,
+        "y": 3
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"THD prądu (THD I)\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'thd_current' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "THD I",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Kąt U–I: ostatnia wartość w oknie. Kąt między napięciem a prądem [°] (mapa v2). U nas kąt jest ujemny przy mocy biernej Q < 0 (zmierzone 25.11.2026: −50,6° przy Q ≈ −9 var); konwencja znaku Findera nie jest potwierdzona w dokumentacji.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 12,
+        "y": 3
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Kąt U–I\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'phase_angle' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Kąt U–I",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Temperatura licznika: ostatnia wartość w oknie. Temperatura wewnętrzna licznika [°C] (mapa v2), odświeżana w PLC co 10 s.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 18,
+        "y": 3
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Temperatura licznika\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_temperature' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Temp.",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
       "description": "Ostatnia, minimalna, maksymalna i średnia wartość każdej wielkości w wybranym oknie czasu.",
       "fieldConfig": {
         "defaults": {
@@ -462,17 +678,18 @@
             "mode": "palette-classic"
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": ""
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 12,
         "w": 24,
         "x": 0,
-        "y": 3
+        "y": 6
       },
-      "id": 8,
+      "id": 12,
       "options": {
         "cellHeight": "sm",
         "showHeader": true
@@ -487,7 +704,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT CASE metric WHEN 'voltage' THEN 'Napięcie U [V]' WHEN 'current' THEN 'Prąd I [A]' WHEN 'active_power' THEN 'Moc czynna P [W]' WHEN 'reactive_power' THEN 'Moc bierna Q [var]' WHEN 'apparent_power' THEN 'Moc pozorna S [VA]' WHEN 'power_factor' THEN 'PF' ELSE 'Częstotliwość f [Hz]' END AS \"Wielkość\", last(value, time) AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency') GROUP BY metric ORDER BY 1",
+          "rawSql": "SELECT CASE metric WHEN 'voltage' THEN 'Napięcie U [V]' WHEN 'current' THEN 'Prąd I [A]' WHEN 'active_power' THEN 'Moc czynna P [W]' WHEN 'reactive_power' THEN 'Moc bierna Q [var]' WHEN 'apparent_power' THEN 'Moc pozorna S [VA]' WHEN 'power_factor' THEN 'PF' WHEN 'frequency' THEN 'Częstotliwość f [Hz]' WHEN 'thd_voltage' THEN 'THD U [%]' WHEN 'thd_current' THEN 'THD I [%]' WHEN 'phase_angle' THEN 'Kąt U–I [°]' ELSE 'Temperatura [°C]' END AS \"Wielkość\", last(value, time) AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency','thd_voltage','thd_current','phase_angle','meter_temperature') GROUP BY metric ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -514,6 +731,7 @@
             "spanNulls": 5000
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": "volt"
         },
         "overrides": []
@@ -522,9 +740,9 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 18
       },
-      "id": 9,
+      "id": 13,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -573,6 +791,7 @@
             "spanNulls": 5000
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": "amp"
         },
         "overrides": []
@@ -581,9 +800,9 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 18
       },
-      "id": 10,
+      "id": 14,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -632,6 +851,7 @@
             "spanNulls": 5000
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": "watt"
         },
         "overrides": []
@@ -640,9 +860,9 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 19
+        "y": 25
       },
-      "id": 11,
+      "id": 15,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -691,6 +911,7 @@
             "spanNulls": 5000
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": "suffix: var"
         },
         "overrides": []
@@ -699,9 +920,9 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 19
+        "y": 25
       },
-      "id": 12,
+      "id": 16,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -750,6 +971,7 @@
             "spanNulls": 5000
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": "voltamp"
         },
         "overrides": []
@@ -758,9 +980,9 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 32
       },
-      "id": 13,
+      "id": 17,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -811,6 +1033,7 @@
           "decimals": 2,
           "max": 1,
           "min": 0,
+          "noValue": "Brak danych (mapa v1)",
           "unit": ""
         },
         "overrides": []
@@ -819,9 +1042,9 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 32
       },
-      "id": 14,
+      "id": 18,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -870,17 +1093,18 @@
             "spanNulls": 5000
           },
           "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
           "unit": "hertz"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 7,
-        "w": 24,
+        "w": 12,
         "x": 0,
-        "y": 33
+        "y": 39
       },
-      "id": 15,
+      "id": 19,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -907,6 +1131,186 @@
         }
       ],
       "title": "Częstotliwość f",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Zawartość harmonicznych napięcia U1 [%] (mapa v2). Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 39
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"THD napięcia (THD U)\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'thd_voltage' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "THD napięcia (THD U)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Zawartość harmonicznych prądu I1 [%] (mapa v2). Zasilacze impulsowe dają wartości rzędu 100–150%. Przy małym prądzie względem zakresu licznika (80 mA wobec 40 A) wartość może być niepewna. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"THD prądu (THD I)\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'thd_current' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "THD prądu (THD I)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Kąt między napięciem a prądem [°] (mapa v2). U nas kąt jest ujemny przy mocy biernej Q < 0 (zmierzone 25.11.2026: −50,6° przy Q ≈ −9 var); konwencja znaku Findera nie jest potwierdzona w dokumentacji. Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 5000
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"Kąt U–I\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'phase_angle' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Kąt U–I",
       "type": "timeseries"
     }
   ],

@@ -94,7 +94,8 @@ def test_panels_with_their_own_range_do_not_depend_on_the_dashboard_range():
     panels = _panels()
     assert set(generator.OWN_RANGE_PANELS) == {
         ("energia", "Zużycie na dobę (ostatnie 14d)"), ("energia", "Profil: godzina × dzień tygodnia (ostatnie 28d)"),
-        ("energia", "Moc maks. profilu"), ("energia", "Kontrola całki mocy a licznik wzorcowy (doby, ostatnie 14d)")}
+        ("energia", "Moc maks. profilu"), ("energia", "Kontrola całki mocy a licznik wzorcowy (doby, ostatnie 14d)"),
+        ("energia", "Energia bierna na dobę: całka i licznik (ostatnie 14d)")}
     for key, marker in generator.OWN_RANGE_PANELS.items():
         panel = panels[key]
         for target in panel["targets"]:
@@ -143,7 +144,7 @@ def test_units_titles_and_formats_are_readable():
         "Z pomiarów", "Pokrycie", "Ekstrapolacja", "Licznik"]
     pf = panels[("na-zywo", "Współczynnik mocy PF")]["fieldConfig"]["defaults"]
     assert pf["min"] == 0 and pf["max"] == 1
-    assert ("jakosc", "Współczynnik mocy (cos φ)") in panels and ("jakosc", "Stosunek mocy biernej do czynnej (Q/P)") in panels
+    assert ("jakosc", "Współczynnik mocy PF") in panels and ("jakosc", "Stosunek mocy biernej do czynnej (Q/P)") in panels
     assert panels[("jakosc", "Odchyłka częstotliwości od znamionowej")]["fieldConfig"]["defaults"]["unit"] == "suffix: Hz"
     assert "date_trunc('minute', now())" in panels[("diagnostyka", "Wiersze na minutę w bazie")]["targets"][0]["rawSql"]
 
@@ -220,3 +221,60 @@ def test_k7c_formatting_fixes():
         hidden = overrides["Zakres osi.*"]
         assert hidden["custom.hideFrom"] == {"legend": True, "tooltip": True, "viz": False} and hidden["custom.lineWidth"] == 0
         assert "Zakres osi (góra)" in panel["targets"][0]["rawSql"] and "Zakres osi (dół)" in panel["targets"][0]["rawSql"]
+
+
+# --- E2-PLC2, krok 2: panele mapy v2 ---------------------------------------------------------------------------------------
+
+V2_PANELS = [
+    ("na-zywo", "THD U"), ("na-zywo", "THD I"), ("na-zywo", "Kąt U–I"), ("na-zywo", "Temp."),
+    ("na-zywo", "THD napięcia (THD U)"), ("na-zywo", "THD prądu (THD I)"),
+    ("jakosc", "THD napięcia (THD U)"), ("jakosc", "THD prądu (THD I)"), ("jakosc", "Kąt U–I"),
+    ("diagnostyka", "Temperatura licznika"), ("diagnostyka", "Temperatura licznika [°C]"),
+    ("diagnostyka", "Czas pracy licznika"), ("diagnostyka", "Czas pracy licznika [dni]"),
+]
+
+
+def test_v2_panels_exist_and_show_no_data_before_v2_instead_of_zero():
+    """Brak wartości przed mapą v2 = brak danych: zapytania bez COALESCE i filtr po liczności, komunikat dla pustych paneli."""
+    panels = _panels()
+    for key in V2_PANELS:
+        panel = panels[key]
+        assert panel["fieldConfig"]["defaults"].get("noValue") == "Brak danych (mapa v1)", key
+        for target in panel["targets"]:
+            assert "COALESCE" not in target["rawSql"].upper(), key
+    for key in (("jakosc", "THD napięcia (THD U)"), ("jakosc", "THD prądu (THD I)"), ("jakosc", "Kąt U–I"), ("diagnostyka", "Temperatura licznika [°C]")):
+        assert "_n > 0" in panels[key]["targets"][0]["rawSql"], key
+
+
+def test_pf_panel_has_the_cos_phi_series_and_explains_the_difference():
+    panel = _panels()[("jakosc", "Współczynnik mocy PF")]
+    assert "phase_cos_sum" in panel["targets"][1]["rawSql"] and 'AS "cos φ"' in panel["targets"][1]["rawSql"]
+    assert "PF = cos φ / √(1 + THD_I²)" in panel["description"] and "0,37" in panel["description"] and "0,64" in panel["description"]
+
+
+def test_angle_description_states_only_what_was_measured():
+    """U-1 z review: bez ogólnego „ujemny = pojemnościowy” jako cechy licznika."""
+    for key in (("jakosc", "Kąt U–I"), ("na-zywo", "Kąt U–I")):
+        description = _panels()[key]["description"]
+        assert "Q < 0" in description and "25.11.2026" in description and "nie jest potwierdzona" in description
+        assert "ujemny = pojemnościowy" not in description
+
+
+def test_thd_current_has_no_thresholds_and_warns_about_small_current():
+    panel = _panels()[("jakosc", "THD prądu (THD I)")]
+    assert "niepewna" in panel["description"] and "thresholds" not in panel["fieldConfig"]["defaults"]
+    assert "thresholds" not in _panels()[("diagnostyka", "Temperatura licznika")]["fieldConfig"]["defaults"]
+
+
+def test_reactive_energy_panels_describe_the_resolution_and_use_the_view():
+    panels = _panels()
+    hourly = panels[("energia", "Energia bierna z mocy (całka Q, godziny)")]
+    daily = panels[("energia", "Energia bierna na dobę: całka i licznik (ostatnie 14d)")]
+    assert "reactive_1h_calc" in hourly["targets"][0]["rawSql"] and "reactive_1h_calc" in daily["targets"][0]["rawSql"]
+    assert "100 varh" in daily["description"] and "11 godzin" in daily["description"] and "Q < 0" in daily["description"]
+    assert daily["type"] == "barchart"
+
+
+def test_rows_per_minute_description_uses_the_v2_model():
+    description = _panels()[("diagnostyka", "Wiersze na minutę w bazie")]["description"]
+    assert "13 wierszy na sekundę przy mapie v1" in description and "20 przy mapie v2" in description and "1 200 na minutę" in description

@@ -784,6 +784,123 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
+      "description": "Energia bierna z całki mocy biernej [varh] w każdej godzinie, z podziałem na znak Q (suma Q × okres próbkowania / 3600 z obecnych próbek; agregat godzinny, obejmuje także okres sprzed mapy v2). Q > 0: indukcyjna (konwencja odbiornika), Q < 0: pojemnościowa, podana jako moduł, żeby porównywać ją ze stanem licznika n4. Bieżąca godzina jest niepełna z natury.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 1,
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 9000000
+          },
+          "decimals": 2,
+          "min": 0,
+          "unit": "suffix: varh"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, reactive_pos_integral_varh AS \"Q > 0 [varh]\", reactive_neg_integral_varh AS \"|Q| przy Q < 0 [varh]\" FROM reactive_1h_calc WHERE $__timeFilter(bucket) AND device_id = '$device' ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Energia bierna z mocy (całka Q, godziny)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia bierna [varh] w dobie lokalnej: całka mocy biernej (Q > 0 i |Q| przy Q < 0) oraz przyrost liczników n2 (Q > 0) i n4 (Q < 0). Licznik zmienia stan co 100 varh, a przy Q ≈ −9 var to jeden krok na ok. 11 godzin, więc przyrost dobowy to 0, 100 lub 200: brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero). Zakres: ostatnie 14d liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 80
+          },
+          "decimals": 1,
+          "min": 0,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "suffix: varh"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single"
+        },
+        "xTickLabelRotation": -45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT to_char(day, 'DD.MM') AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM (SELECT (bucket AT TIME ZONE 'Europe/Warsaw')::date AS day, sum(reactive_pos_integral_varh) AS pos_int, sum(reactive_neg_integral_varh) AS neg_int, sum(reactive_pos_delta_varh) AS pos_delta, sum(reactive_neg_delta_varh) AS neg_delta FROM reactive_1h_calc WHERE device_id = '$device' AND (bucket AT TIME ZONE 'Europe/Warsaw')::date >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 13 GROUP BY 1) g ORDER BY day",
+          "refId": "A"
+        }
+      ],
+      "title": "Energia bierna na dobę: całka i licznik (ostatnie 14d)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
       "description": "Dla każdej doby lokalnej: energia z całki mocy, pokrycie doby, przyrost licznika wzorcowego i różnica. Skróty: Licznik = przyrost licznika wzorcowego, Ekstrap. = całka uzupełniona do pełnej doby (całka / pokrycie), Rozdz. = rozdzielczość licznika, W rozdz. = różnica nie większa niż jeden krok licznika, Luki = godziny po luce w danych. Licznik zmienia stan co 100 Wh, więc przy małym obciążeniu przyrost dobowy to 1–2 kroki: główną miarą zgodności jest „W granicach rozdzielczości”, a odchyłka procentowa jest podawana tylko przy przyroście co najmniej 5 kroków licznika. Zakres: ostatnie 14d liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
       "fieldConfig": {
         "defaults": {
@@ -816,9 +933,9 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 52
       },
-      "id": 9,
+      "id": 11,
       "options": {
         "cellHeight": "sm",
         "showHeader": true

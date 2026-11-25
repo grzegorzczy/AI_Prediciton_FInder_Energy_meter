@@ -525,7 +525,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 na sekundę (780 na minutę), przy meter_status ≠ 0 5 na sekundę, przy awarii PLC 1 na sekundę (model z docs/status-codes.md). Bieżąca, niepełna minuta jest pomijana. Panel dla zakresów do 24 godzin.",
+      "description": "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 wierszy na sekundę przy mapie v1 (780 na minutę) albo 20 przy mapie v2 (1 200 na minutę), przy meter_status ≠ 0 5 na sekundę (300 na minutę), przy awarii PLC 1 na sekundę (60 na minutę); model z docs/status-codes.md. Bieżąca, niepełna minuta jest pomijana. Panel dla zakresów do 24 godzin.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -578,6 +578,234 @@
         }
       ],
       "title": "Wiersze na minutę w bazie",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Ostatnia temperatura wewnętrzna licznika [°C] w wybranym zakresie czasu (mapa v2, odświeżana w PLC co 10 s). Bez progów: granice z karty katalogowej nie są znane.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 28
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, (SELECT temperature_sum / nullif(temperature_n, 0) FROM energy_ext_1m WHERE device_id = '$device' AND temperature_n > 0 AND $__timeFilter(bucket) ORDER BY bucket DESC LIMIT 1) AS \"Temperatura\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Temperatura licznika",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Temperatura wewnętrzna licznika: minimum, średnia i maksimum w kroku wykresu (agregat minutowy, mapa v2). Brak wartości przed mapą v2.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 1,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 4,
+        "y": 28
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(temperature_min) AS \"Minimum\", sum(temperature_sum) / nullif(sum(temperature_n), 0) AS \"Średnia\", max(temperature_max) AS \"Maksimum\" FROM energy_ext_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND temperature_n > 0 GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Temperatura licznika [°C]",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Czas pracy licznika w dobach (ostatnia wartość z zakresu; mapa v2, odświeżany w PLC co 10 s). Wartość jest zapisywana jako REAL w sekundach, więc po ok. 194 dniach traci rozdzielczość 1 s; wykres obok pokazuje zerowania (restart licznika).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "suffix: d"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 12,
+        "y": 28
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, (SELECT run_time_last / 86400.0 FROM energy_ext_1m WHERE device_id = '$device' AND run_time_last IS NOT NULL AND $__timeFilter(bucket) ORDER BY bucket DESC LIMIT 1) AS \"Czas pracy\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Czas pracy licznika",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Czas pracy licznika [dni] (ostatnia wartość w kroku wykresu, agregat minutowy, mapa v2). Spadek wartości oznacza restart licznika; brak wartości przed mapą v2.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 3,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "suffix: d"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(run_time_min) / 86400.0 AS \"Minimum\", max(run_time_max) / 86400.0 AS \"Maksimum\" FROM energy_ext_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND run_time_last IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Czas pracy licznika [dni]",
       "type": "timeseries"
     }
   ],

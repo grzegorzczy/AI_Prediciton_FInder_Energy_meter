@@ -483,7 +483,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Współczynnik mocy PF: średnia w kroku wykresu, z agregatu minutowego (0–1).",
+      "description": "Współczynnik mocy PF z licznika (średnia w kroku wykresu, 0–1) oraz, od mapy v2, cos φ = cos(kąt U–I) (średnia cos z próbek, z agregatu). PF to nie jest cos φ, gdy prąd jest odkształcony: PF = cos φ / √(1 + THD_I²). Przy THD prądu ok. 140% PF wynosi 0,37, a cos φ 0,64 (zmierzone 25.11.2026: kąt −50,6°, THD I 140,2%). Seria cos φ nie ma wartości przed mapą v2.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -532,11 +532,23 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"PF\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(phase_cos_sum) / nullif(sum(phase_angle_n), 0) AS \"cos φ\" FROM energy_ext_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND phase_angle_n > 0 GROUP BY 1 ORDER BY 1",
+          "refId": "B"
         }
       ],
-      "title": "Współczynnik mocy (cos φ)",
+      "title": "Współczynnik mocy PF",
       "type": "timeseries"
     },
     {
@@ -596,6 +608,186 @@
         }
       ],
       "title": "Stosunek mocy biernej do czynnej (Q/P)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Zawartość harmonicznych napięcia U1 [%]: minimum, średnia i maksimum w kroku wykresu (agregat minutowy, mapa v2). Brak wartości przed mapą v2.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 25
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(thd_voltage_min) AS \"Minimum\", sum(thd_voltage_sum) / nullif(sum(thd_voltage_n), 0) AS \"Średnia\", max(thd_voltage_max) AS \"Maksimum\" FROM energy_ext_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND thd_voltage_n > 0 GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "THD napięcia (THD U)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Zawartość harmonicznych prądu I1 [%]: minimum, średnia i maksimum w kroku wykresu (mapa v2). Zasilacze impulsowe dają ok. 100–150%. Przy małym prądzie względem zakresu licznika (80 mA wobec 40 A) wartość może być niepewna; nie oceniamy jej progami.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 25
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(thd_current_min) AS \"Minimum\", sum(thd_current_sum) / nullif(sum(thd_current_n), 0) AS \"Średnia\", max(thd_current_max) AS \"Maksimum\" FROM energy_ext_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND thd_current_n > 0 GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "THD prądu (THD I)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Kąt między napięciem a prądem [°]: minimum, średnia i maksimum w kroku wykresu (mapa v2). U nas kąt jest ujemny przy mocy biernej Q < 0 (zmierzone 25.11.2026: −50,6° przy Q ≈ −9 var); konwencja znaku Findera nie jest potwierdzona w dokumentacji.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 2,
+          "noValue": "Brak danych (mapa v1)",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 25
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(phase_angle_min) AS \"Minimum\", sum(phase_angle_sum) / nullif(sum(phase_angle_n), 0) AS \"Średnia\", max(phase_angle_max) AS \"Maksimum\" FROM energy_ext_1m WHERE $__timeFilter(bucket) AND device_id = '$device' AND phase_angle_n > 0 GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Kąt U–I",
       "type": "timeseries"
     }
   ],

@@ -344,6 +344,22 @@ LIVE = [
 ]
 
 
+NO_V2 = "Brak danych (mapa v1)"          # metryki mapy v2: przed v2 brak wartości = brak danych, nigdy zero
+# metryka, skrót (kafelek), nazwa wykresu, jednostka, opis, szerokość kafelka
+LIVE_V2 = [
+    ("thd_voltage", "THD U", "THD napięcia (THD U)", "percent",
+     "Zawartość harmonicznych napięcia U1 [%] (mapa v2).", 6),
+    ("thd_current", "THD I", "THD prądu (THD I)", "percent",
+     "Zawartość harmonicznych prądu I1 [%] (mapa v2). Zasilacze impulsowe dają wartości rzędu 100–150%. Przy małym prądzie względem zakresu licznika "
+     "(80 mA wobec 40 A) wartość może być niepewna.", 6),
+    ("phase_angle", "Kąt U–I", "Kąt U–I", "degree",
+     "Kąt między napięciem a prądem [°] (mapa v2). U nas kąt jest ujemny przy mocy biernej Q < 0 (zmierzone 25.11.2026: −50,6° przy Q ≈ −9 var); "
+     "konwencja znaku Findera nie jest potwierdzona w dokumentacji.", 6),
+    ("meter_temperature", "Temp.", "Temperatura licznika", "celsius",
+     "Temperatura wewnętrzna licznika [°C] (mapa v2), odświeżana w PLC co 10 s.", 6),
+]
+
+
 def live() -> Dash:
     d = new_dash("aip-na-zywo", "Licznik na żywo",
                  "Pomiary z licznika w czasie rzeczywistym (odświeżanie 5 s, domyślnie ostatnie 15 min). Dla zakresów dłuższych niż kilka godzin "
@@ -353,21 +369,30 @@ def live() -> Dash:
                    [target(f"SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"{title}\" FROM measurements WHERE $__timeFilter(time) "
                            f"AND {DEV} AND metric = '{metric}' GROUP BY 1 ORDER BY 1")], unit=unit, decimals=2,
                    color_mode="none"), width, 3, new_row=(metric == LIVE[0][0]))
+    for metric, short, title, unit, desc, width in LIVE_V2:
+        d.add(stat(short, f"{title}: ostatnia wartość w oknie. {desc}",
+                   [target(f"SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"{title}\" FROM measurements WHERE $__timeFilter(time) "
+                           f"AND {DEV} AND metric = '{metric}' GROUP BY 1 ORDER BY 1")], unit=unit, decimals=2,
+                   color_mode="none", no_value=NO_V2), width, 3, new_row=(metric == LIVE_V2[0][0]))
     d.add(table("Wartości w oknie",
                 "Ostatnia, minimalna, maksymalna i średnia wartość każdej wielkości w wybranym oknie czasu.",
                 [target(f"SELECT CASE metric WHEN 'voltage' THEN 'Napięcie U [V]' WHEN 'current' THEN 'Prąd I [A]' "
                         "WHEN 'active_power' THEN 'Moc czynna P [W]' WHEN 'reactive_power' THEN 'Moc bierna Q [var]' "
-                        "WHEN 'apparent_power' THEN 'Moc pozorna S [VA]' WHEN 'power_factor' THEN 'PF' ELSE 'Częstotliwość f [Hz]' END AS \"Wielkość\", "
+                        "WHEN 'apparent_power' THEN 'Moc pozorna S [VA]' WHEN 'power_factor' THEN 'PF' WHEN 'frequency' THEN 'Częstotliwość f [Hz]' "
+                        "WHEN 'thd_voltage' THEN 'THD U [%]' WHEN 'thd_current' THEN 'THD I [%]' WHEN 'phase_angle' THEN 'Kąt U–I [°]' "
+                        "ELSE 'Temperatura [°C]' END AS \"Wielkość\", "
                         "last(value, time) AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", "
                         "avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND "
-                        f"{DEV} AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency') "
-                        "GROUP BY metric ORDER BY 1", "table")], decimals=2), 24, 9, new_row=True)
-    for i, (metric, short, title, unit, desc, width) in enumerate(LIVE):
+                        f"{DEV} AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency',"
+                        "'thd_voltage','thd_current','phase_angle','meter_temperature') "
+                        "GROUP BY metric ORDER BY 1", "table")], decimals=2, no_value=NO_V2), 24, 12, new_row=True)
+    charts = [item for item in LIVE] + [item for item in LIVE_V2 if item[0] != "meter_temperature"]      # temperatura: „Stan i diagnostyka”
+    for i, (metric, short, title, unit, desc, width) in enumerate(charts):
         extra = {"min_": 0, "max_": 1} if metric == "power_factor" else {}
-        last = i == len(LIVE) - 1
+        last = i == len(charts) - 1 and len(charts) % 2 == 1
         d.add(timeseries(title, desc + " Średnia w kroku wykresu; luki dłuższe niż 5 s przerywają linię (brak danych, nie zero).",
                          [target(f"SELECT $__timeGroupAlias(time, $__interval), avg(value) AS \"{title}\" FROM measurements WHERE $__timeFilter(time) "
-                                 f"AND {DEV} AND metric = '{metric}' GROUP BY 1 ORDER BY 1")], unit=unit, decimals=2, **extra),
+                                 f"AND {DEV} AND metric = '{metric}' GROUP BY 1 ORDER BY 1")], unit=unit, decimals=2, no_value=NO_V2, **extra),
               24 if last else 12, 7, new_row=(i == 0))
     return d
 
@@ -419,10 +444,14 @@ def quality() -> Dash:
                              f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1")],
                      unit="suffix: Hz", span_ms=150000, decimals=2,
                      overrides=[{"matcher": {"id": "byRegexp", "options": ".*granica"}, "properties": dashed_red}, *hidden_range]), 12, 8)
-    d.add(timeseries("Współczynnik mocy (cos φ)",
-                     "Współczynnik mocy PF: średnia w kroku wykresu, z agregatu minutowego (0–1).",
-                     [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\" "
-                             f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1")],
+    d.add(timeseries("Współczynnik mocy PF",
+                     "Współczynnik mocy PF z licznika (średnia w kroku wykresu, 0–1) oraz, od mapy v2, cos φ = cos(kąt U–I) (średnia cos z próbek, z agregatu). "
+                     "PF to nie jest cos φ, gdy prąd jest odkształcony: PF = cos φ / √(1 + THD_I²). Przy THD prądu ok. 140% PF wynosi 0,37, a cos φ 0,64 "
+                     "(zmierzone 25.11.2026: kąt −50,6°, THD I 140,2%). Seria cos φ nie ma wartości przed mapą v2.",
+                     [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"PF\" "
+                             f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1"),
+                      target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(phase_cos_sum) / nullif(sum(phase_angle_n), 0) AS \"cos φ\" "
+                             f"FROM energy_ext_1m WHERE $__timeFilter(bucket) AND {DEV} AND phase_angle_n > 0 GROUP BY 1 ORDER BY 1", ref="B")],
                      span_ms=150000, decimals=2, min_=0, max_=1), 12, 8, new_row=True)
     d.add(timeseries("Stosunek mocy biernej do czynnej (Q/P)",
                      "Stosunek średniej mocy biernej do średniej mocy czynnej Q/P w kroku wykresu; pusty, gdy P ≈ 0. Znak zależy od charakteru obciążenia (indukcyjne lub pojemnościowe).",
@@ -430,6 +459,24 @@ def quality() -> Dash:
                              "nullif(sum(active_power_sum) / nullif(sum(active_power_n), 0), 0) AS \"Q/P\" "
                              f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1")],
                      span_ms=150000, decimals=2), 12, 8)
+    def quality_panel(title, desc, metric_key, column, unit, label):
+        return timeseries(title, desc,
+                          [target(f"SELECT $__timeGroupAlias(bucket, $__interval), min({column}_min) AS \"Minimum\", "
+                                  f"sum({column}_sum) / nullif(sum({column}_n), 0) AS \"Średnia\", max({column}_max) AS \"Maksimum\" "
+                                  f"FROM energy_ext_1m WHERE $__timeFilter(bucket) AND {DEV} AND {column}_n > 0 GROUP BY 1 ORDER BY 1")],
+                          unit=unit, span_ms=150000, decimals=2, no_value=NO_V2)
+
+    d.add(quality_panel("THD napięcia (THD U)",
+                        "Zawartość harmonicznych napięcia U1 [%]: minimum, średnia i maksimum w kroku wykresu (agregat minutowy, mapa v2). Brak wartości przed mapą v2.",
+                        "thd_voltage", "thd_voltage", "percent", "THD U"), 8, 8, new_row=True)
+    d.add(quality_panel("THD prądu (THD I)",
+                        "Zawartość harmonicznych prądu I1 [%]: minimum, średnia i maksimum w kroku wykresu (mapa v2). Zasilacze impulsowe dają ok. 100–150%. "
+                        "Przy małym prądzie względem zakresu licznika (80 mA wobec 40 A) wartość może być niepewna; nie oceniamy jej progami.",
+                        "thd_current", "thd_current", "percent", "THD I"), 8, 8)
+    d.add(quality_panel("Kąt U–I",
+                        "Kąt między napięciem a prądem [°]: minimum, średnia i maksimum w kroku wykresu (mapa v2). U nas kąt jest ujemny przy mocy biernej Q < 0 "
+                        "(zmierzone 25.11.2026: −50,6° przy Q ≈ −9 var); konwencja znaku Findera nie jest potwierdzona w dokumentacji.",
+                        "phase_angle", "phase_angle", "degree", "Kąt"), 8, 8)
     return d
 
 
@@ -452,6 +499,7 @@ OWN_RANGE_PANELS = {            # (dashboard, tytuł) -> klucz znacznika
     ("energia", f"Profil: godzina × dzień tygodnia (ostatnie {PROFILE_RANGE})"): "profile",
     ("energia", "Moc maks. profilu"): "profile",
     ("energia", f"Kontrola całki mocy a licznik wzorcowy (doby, ostatnie {DAYS_RANGE})"): "daily",
+    ("energia", f"Energia bierna na dobę: całka i licznik (ostatnie {DAYS_RANGE})"): "daily",
 }
 
 
@@ -540,6 +588,24 @@ def energy() -> Dash:
                              f"WHERE $__timeFilter(bucket) AND {DEV} AND active_power_n > 0 AND extract(hour FROM bucket AT TIME ZONE '{TZ}') < 5 "
                              "GROUP BY 1 ORDER BY 1")],
                      unit="watt", bars=True, span_ms=200000000, decimals=2, min_=0), 24, 8, new_row=True)
+    d.add(timeseries("Energia bierna z mocy (całka Q, godziny)",
+                     "Energia bierna z całki mocy biernej [varh] w każdej godzinie, z podziałem na znak Q (suma Q × okres próbkowania / 3600 z obecnych próbek; "
+                     "agregat godzinny, obejmuje także okres sprzed mapy v2). Q > 0: indukcyjna (konwencja odbiornika), Q < 0: pojemnościowa, podana jako moduł, "
+                     "żeby porównywać ją ze stanem licznika n4. Bieżąca godzina jest niepełna z natury.",
+                     [target(f"SELECT bucket AS time, reactive_pos_integral_varh AS \"Q > 0 [varh]\", reactive_neg_integral_varh AS \"|Q| przy Q < 0 [varh]\" "
+                             f"FROM reactive_1h_calc WHERE $__timeFilter(bucket) AND {DEV} ORDER BY 1")],
+                     unit="suffix: varh", bars=True, span_ms=9000000, decimals=2, min_=0), 12, 8, new_row=True)
+    d.add(barchart(f"Energia bierna na dobę: całka i licznik (ostatnie {DAYS_RANGE})",
+                   "Energia bierna [varh] w dobie lokalnej: całka mocy biernej (Q > 0 i |Q| przy Q < 0) oraz przyrost liczników n2 (Q > 0) i n4 (Q < 0). "
+                   "Licznik zmienia stan co 100 varh, a przy Q ≈ −9 var to jeden krok na ok. 11 godzin, więc przyrost dobowy to 0, 100 lub 200: "
+                   "brak przyrostu oznacza „brak kroku licznika”, a nie „brak energii biernej”. Przyrost licznika jest pusty przed mapą v2 (brak danych, nie zero). "
+                   f"Zakres: ostatnie {DAYS_RANGE} liczone od teraz, niezależnie od zakresu pulpitu (także bezwzględnego).",
+                   [target(f"SELECT to_char(day, 'DD.MM') AS \"Doba\", pos_int AS \"Całka Q > 0\", neg_int AS \"Całka |Q| (Q < 0)\", "
+                           f"pos_delta AS \"Licznik n2 (Q > 0)\", neg_delta AS \"Licznik n4 (Q < 0)\" FROM ("
+                           f"SELECT (bucket AT TIME ZONE '{TZ}')::date AS day, sum(reactive_pos_integral_varh) AS pos_int, sum(reactive_neg_integral_varh) AS neg_int, "
+                           f"sum(reactive_pos_delta_varh) AS pos_delta, sum(reactive_neg_delta_varh) AS neg_delta FROM reactive_1h_calc "
+                           f"WHERE {DEV} AND (bucket AT TIME ZONE '{TZ}')::date >= {OWN_RANGE_MARKER['daily']} GROUP BY 1) g ORDER BY day", "table")],
+                   unit="suffix: varh", decimals=1, min_=0, no_value=NO_V2), 12, 8)
     d.add(table(f"Kontrola całki mocy a licznik wzorcowy (doby, ostatnie {DAYS_RANGE})",
                 "Dla każdej doby lokalnej: energia z całki mocy, pokrycie doby, przyrost licznika wzorcowego i różnica. Skróty: Licznik = przyrost licznika wzorcowego, "
                 "Ekstrap. = całka uzupełniona do pełnej doby (całka / pokrycie), Rozdz. = rozdzielczość licznika, W rozdz. = różnica nie większa niż jeden krok licznika, "
@@ -609,12 +675,35 @@ def diagnostics() -> Dash:
                              f"WHERE $__timeFilter(bucket) AND {DEV} AND {POLL} IS NOT NULL ORDER BY 1")],
                      unit="s", bars=True, span_ms=9000000, decimals=0, min_=0), 12, 7, new_row=True)
     d.add(timeseries("Wiersze na minutę w bazie",
-                     "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 na sekundę (780 na minutę), przy meter_status ≠ 0 5 na sekundę, "
-                     "przy awarii PLC 1 na sekundę (model z docs/status-codes.md). Bieżąca, niepełna minuta jest pomijana. Panel dla zakresów do 24 godzin.",
+                     "Liczba wierszy zapisanych w bazie na minutę: sprawny licznik daje 13 wierszy na sekundę przy mapie v1 (780 na minutę) albo 20 przy mapie v2 (1 200 na minutę), "
+                     "przy meter_status ≠ 0 5 na sekundę (300 na minutę), przy awarii PLC 1 na sekundę (60 na minutę); model z docs/status-codes.md. "
+                     "Bieżąca, niepełna minuta jest pomijana. Panel dla zakresów do 24 godzin.",
                      [target(f"SELECT time_bucket(interval '1 minute', time) AS time, count(*) AS \"Wiersze\" FROM measurements WHERE $__timeFilter(time) "
                              f"AND time < date_trunc('minute', now()) "
                              f"AND (device_id = '$device' OR device_id = {PLC}) AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '24 hours' GROUP BY 1 ORDER BY 1")],
                      span_ms=150000, decimals=0, min_=0), 12, 7)
+    d.add(stat("Temperatura licznika",
+               "Ostatnia temperatura wewnętrzna licznika [°C] w wybranym zakresie czasu (mapa v2, odświeżana w PLC co 10 s). Bez progów: granice z karty katalogowej nie są znane.",
+               [target(f"SELECT now() AS time, (SELECT temperature_sum / nullif(temperature_n, 0) FROM energy_ext_1m WHERE {DEV} AND temperature_n > 0 "
+                       f"AND $__timeFilter(bucket) ORDER BY bucket DESC LIMIT 1) AS \"Temperatura\"", "table")],
+               unit="celsius", decimals=1, no_value=NO_V2), 4, 7, new_row=True)
+    d.add(timeseries("Temperatura licznika [°C]",
+                     "Temperatura wewnętrzna licznika: minimum, średnia i maksimum w kroku wykresu (agregat minutowy, mapa v2). Brak wartości przed mapą v2.",
+                     [target(f"SELECT $__timeGroupAlias(bucket, $__interval), min(temperature_min) AS \"Minimum\", "
+                             f"sum(temperature_sum) / nullif(sum(temperature_n), 0) AS \"Średnia\", max(temperature_max) AS \"Maksimum\" "
+                             f"FROM energy_ext_1m WHERE $__timeFilter(bucket) AND {DEV} AND temperature_n > 0 GROUP BY 1 ORDER BY 1")],
+                     unit="celsius", span_ms=150000, decimals=1, no_value=NO_V2), 8, 7)
+    d.add(stat("Czas pracy licznika",
+               "Czas pracy licznika w dobach (ostatnia wartość z zakresu; mapa v2, odświeżany w PLC co 10 s). Wartość jest zapisywana jako REAL w sekundach, "
+               "więc po ok. 194 dniach traci rozdzielczość 1 s; wykres obok pokazuje zerowania (restart licznika).",
+               [target(f"SELECT now() AS time, (SELECT run_time_last / 86400.0 FROM energy_ext_1m WHERE {DEV} AND run_time_last IS NOT NULL "
+                       f"AND $__timeFilter(bucket) ORDER BY bucket DESC LIMIT 1) AS \"Czas pracy\"", "table")],
+               unit="suffix: d", decimals=2, no_value=NO_V2), 4, 7)
+    d.add(timeseries("Czas pracy licznika [dni]",
+                     "Czas pracy licznika [dni] (ostatnia wartość w kroku wykresu, agregat minutowy, mapa v2). Spadek wartości oznacza restart licznika; brak wartości przed mapą v2.",
+                     [target(f"SELECT $__timeGroupAlias(bucket, $__interval), min(run_time_min) / 86400.0 AS \"Minimum\", max(run_time_max) / 86400.0 AS \"Maksimum\" "
+                             f"FROM energy_ext_1m WHERE $__timeFilter(bucket) AND {DEV} AND run_time_last IS NOT NULL GROUP BY 1 ORDER BY 1")],
+                     unit="suffix: d", span_ms=150000, decimals=3, no_value=NO_V2), 8, 7)
     return d
 
 

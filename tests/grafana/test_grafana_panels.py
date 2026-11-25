@@ -143,3 +143,40 @@ def test_own_range_panels_return_the_same_data_for_any_dashboard_range(grafana_d
                             for f in result["frames"]])
         assert results[0] == results[1] == results[2], f"{title}: wynik zależy od zakresu pulpitu"
         assert results[0] and results[0][0][0], f"{title}: brak danych"
+
+
+V2_PANEL_TITLES = {"THD U", "THD I", "Kąt U–I", "Temp.", "THD napięcia (THD U)", "THD prądu (THD I)", "Temperatura licznika",
+                   "Temperatura licznika [°C]", "Czas pracy licznika", "Czas pracy licznika [dni]"}
+
+
+def test_v2_panels_return_data_for_the_meter_with_v2_and_no_rows_for_the_meter_without(grafana_data):
+    """E2-PLC2: licznik 1 ma dane v2 (ostatnie 2 doby), licznik 2 ich nie ma: panele mają zwrócić brak wierszy, a nie zera."""
+    for name in ("na-zywo", "jakosc", "diagnostyka"):
+        with_v2 = rows_by_panel(DASHES[name], "6h", M1)
+        without_v2 = rows_by_panel(DASHES[name], "6h", M2)
+        for title in V2_PANEL_TITLES & set(with_v2):
+            assert with_v2[title] > 0, f"{name}/{title}: licznik z danymi v2 bez wierszy"
+            assert without_v2[title] == 0, f"{name}/{title}: licznik bez v2 ma {without_v2[title]} wierszy (powinien być brak danych)"
+
+
+def test_thd_values_are_the_stored_ones_not_zero_filled(grafana_data):
+    """Wartości paneli THD i kąta pochodzą z danych (a nie z wypełnienia zerami): THD I ok. 140%, kąt ok. -50,5°."""
+    panel = next(p for p in DASHES["jakosc"]["panels"] if p["title"] == "THD prądu (THD I)")
+    now = time.time()
+    result = ds_query(expand_vars(panel["targets"][0]["rawSql"], M1), "time_series", now - 6 * 3600, now)
+    averages = [v for v in result["frames"][0]["data"]["values"][2] if v is not None]
+    assert averages and all(130 < v < 150 for v in averages)
+    angle = next(p for p in DASHES["jakosc"]["panels"] if p["title"] == "Kąt U–I")
+    result = ds_query(expand_vars(angle["targets"][0]["rawSql"], M1), "time_series", now - 6 * 3600, now)
+    assert all(-52 < v < -49 for v in result["frames"][0]["data"]["values"][2] if v is not None)
+
+
+def test_pf_panel_cos_phi_series_matches_the_stored_angle(grafana_data):
+    import math
+
+    panel = next(p for p in DASHES["jakosc"]["panels"] if p["title"] == "Współczynnik mocy PF")
+    target = panel["targets"][1]
+    now = time.time()
+    result = ds_query(expand_vars(target["rawSql"], M1), "time_series", now - 6 * 3600, now, target["refId"])
+    values = [v for v in result["frames"][0]["data"]["values"][1] if v is not None]
+    assert values and all(abs(v - math.cos(math.radians(-50.5))) < 0.03 for v in values)

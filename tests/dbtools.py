@@ -60,7 +60,7 @@ def refresh_all(conn) -> None:
     może akurat trwać (LockNotAvailable: współbieżne odświeżenie): wtedy próbujemy ponownie."""
     import time
 
-    for view in ("energy_1m", "energy_1h"):
+    for view in ("energy_1m", "energy_1h", "energy_ext_1m", "energy_ext_1h"):
         for attempt in range(10):
             try:
                 conn.execute(f"CALL refresh_continuous_aggregate('{view}', NULL, NULL)")
@@ -85,6 +85,14 @@ PERF_METRICS = {
     "energy_import_wh": ("CASE WHEN g < 300000 THEN 1000000 + floor(g * 1.6667 / 100) * 100 "
                          "ELSE floor((g - 300000) * 1.6667 / 100) * 100 END", "Wh"),     # jeden reset licznika
     "meter_status": ("CASE WHEN random() < 0.003 THEN 1 ELSE 0 END", ""),
+    # mapa v2 (E2-PLC2): jeden wiersz na minutę jak pozostałe metryki
+    "thd_voltage": ("2.3 + 0.4 * sin(g / 900.0) + 0.1 * random()", "%"),
+    "thd_current": ("140 + 8 * sin(g / 700.0) + random()", "%"),
+    "phase_angle": ("-50 + 2 * sin(g / 1000.0) + 0.2 * random()", "°"),
+    "meter_temperature": ("30 + 2 * sin(g / 5000.0)", "°C"),
+    "run_time": ("1000000 + g * 60", "s"),
+    "reactive_pos_varh": ("floor(g * 0.01 / 100) * 100", "varh"),
+    "reactive_neg_varh": ("4500 + floor(g * 0.15 / 100) * 100", "varh"),
 }
 
 
@@ -159,6 +167,16 @@ def build_panel_data(conn) -> dict:
     _gen(conn, "plc-01", "link_status", "", dense, "date_trunc('second', now())", 1,
          "CASE WHEN e BETWEEN extract(epoch FROM now() - interval '2 hours') AND extract(epoch FROM now() - interval '2 hours') + 120 THEN 1 ELSE 0 END",
          "NOT (e BETWEEN extract(epoch FROM now() - interval '3 hours') AND extract(epoch FROM now() - interval '3 hours') + 600)")
+    v2 = {"thd_voltage": ("2.3 + 0.2 * sin(e / 900.0)", "%"), "thd_current": ("140 + 5 * sin(e / 700.0)", "%"),
+          "phase_angle": ("-50.5 + sin(e / 1000.0)", "°"), "meter_temperature": ("30 + 0.5 * sin(e / 5000.0)", "°C"),
+          "run_time": ("1000000 + e - extract(epoch FROM now())", "s"), "reactive_pos_varh": ("0", "varh"),
+          "reactive_neg_varh": ("4500 + mod(floor(e / 40000.0)::bigint, 10) * 100", "varh")}
+    outage = ("NOT (e BETWEEN extract(epoch FROM now() - interval '3 hours') "
+              "AND extract(epoch FROM now() - interval '3 hours') + 600)")
+    for metric, (expr, unit) in v2.items():     # v2: ostatnie 2 doby co minutę, ostatnie 6 h co sekundę (dane sprzed v2 nie mają tych metryk)
+        _gen(conn, "finder_7m24_1", metric, unit, "now() - interval '2 days'", dense + " - interval '1 second'", 60, expr)
+        _gen(conn, "finder_7m24_1", metric, unit, dense, "date_trunc('second', now())", 1, expr,
+             "mod(floor(e)::bigint, 64) >= 4 AND " + outage)
     for metric, (expr, unit) in {"active_power": ("500", "W"), "voltage": ("231", "V"), "current": ("2.2", "A"),
                                  "reactive_power": ("30", "var"), "apparent_power": ("510", "VA"), "power_factor": ("0.98", ""),
                                  "frequency": ("50", "Hz"), "energy_import_wh": ("2000000 + floor(e / 7.2 / 100) * 100", "Wh"),
