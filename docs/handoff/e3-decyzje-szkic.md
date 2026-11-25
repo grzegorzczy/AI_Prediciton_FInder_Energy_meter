@@ -51,3 +51,13 @@ do MQTT, z pominięciem PLC. Powiększenie `awTcpInputRegs` i nowa wersja mapy s
 - **Linia MQTT: osobna `zaklad1/linia2`** dla urządzeń symulowanych; `zaklad1/linia1` = prawdziwy sprzęt.
 
 Pozostałe (S3–S6, S9–S11) – propozycje architekta, przyjęte domyślnie; do potwierdzenia przy review planu `e3-k0-plan.md`.
+
+## Po review planu e3-k0 (25.11.2026)
+
+- **Historia (K0-D1, decyzja Grzegorza):** liczniki wirtualne co 1 s × 14 dni, pompa co 1 min × 84 dni, przez MQTT
+  (historia 1 min dla liczników zaniżałaby energię 60×, bo widoki liczą z próbek co 1 s). Tempo z pomiaru w k5,
+  pilotaż 1 doby, pełne wgranie w nocy.
+- **K0-D2:** degradacja 120 dni, historia 84 dni (70 %) – bez konfliktu z retencją 90 dni.
+- **Parametry (zaakceptowane):** pasteryzator 18 kW, agregat chłodniczy 11 kW, mieszalnik 7,5 kW, pakowaczka 4 kW;
+  pompa P-101 11 kW, 2950 obr/min, 40 m³/h; drgania modelu 1,1 → 7,0 mm/s (koniec zakresu, nie próg).
+- `pump_1m` w etapie 3; pompa bez `active_power`; tryb przyspieszony tylko `sim_pump_demo`. Szczegóły: `e3-k0-review.md`.
