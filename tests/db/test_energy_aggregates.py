@@ -149,7 +149,7 @@ def test_real_time_mode_shows_the_newest_unmaterialized_bucket(admin):
     assert rows[-1][0] == BASE + timedelta(minutes=2)
     flags = admin.execute(
         "SELECT view_name, materialized_only FROM timescaledb_information.continuous_aggregates ORDER BY 1").fetchall()
-    assert flags == [("energy_1h", False), ("energy_1m", False)]
+    assert flags == [("energy_1h", False), ("energy_1m", False), ("energy_ext_1h", False), ("energy_ext_1m", False)]
 
 
 def test_late_data_is_corrected_by_the_next_refresh(admin):

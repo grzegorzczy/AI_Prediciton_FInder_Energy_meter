@@ -60,7 +60,7 @@ def test_refresh_windows_are_shorter_than_raw_retention_and_compression_follows_
 def test_compression_settings_of_the_aggregates(admin):
     rows = admin.execute(
         "SELECT view_name, compression_enabled FROM timescaledb_information.continuous_aggregates ORDER BY 1").fetchall()
-    assert rows == [("energy_1h", True), ("energy_1m", True)]
+    assert rows == [("energy_1h", True), ("energy_1m", True), ("energy_ext_1h", True), ("energy_ext_1m", True)]
 
 
 def test_reader_reads_every_aggregate_and_view(reader):
@@ -153,5 +153,5 @@ def test_migration_002_interrupted_midway_completes_on_the_next_run(
 def test_no_transaction_runner_creates_continuous_aggregates(admin):
     names = {r[0] for r in admin.execute(
         "SELECT view_name FROM timescaledb_information.continuous_aggregates").fetchall()}
-    assert names == set(AGGREGATES)
+    assert names == set(AGGREGATES) | {"energy_ext_1m", "energy_ext_1h"}
     assert (MIGRATIONS / "002_energy_aggregates.sql").read_text(encoding="utf-8").startswith("-- migrate: no-transaction")

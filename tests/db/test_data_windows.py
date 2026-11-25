@@ -16,7 +16,7 @@ def test_seed_windows_are_present_and_consistent(admin):
     kinds = [r[0] for r in rows]
     assert kinds == ["collector_start", "calm_window", "mqtt_broker_restart", "collector_stopped", "rs485_break",
                      "plc_lan1_unplugged", "plc_program_stop", "power_outage", "collector_stopped", "plc_program_download",
-                     "deploy"]
+                     "deploy", "plc_program_download"]
     assert all(r[2] >= r[1] for r in rows)
     assert {r[0] for r in rows if not r[3]} == {"calm_window"}          # tylko okno referencyjne zostaje w analityce
 
@@ -35,7 +35,7 @@ def test_annotation_query_returns_the_windows_of_a_range(admin):
 
 
 def test_reader_reads_and_writer_and_reader_cannot_change(reader, writer):
-    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 11
+    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 12
     with pytest.raises(psycopg.Error):
         reader.execute("DELETE FROM data_windows")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -55,6 +55,17 @@ def test_constraints(admin):
 def test_plc_program_download_window_has_the_exact_boundaries_from_the_data(admin):
     """k7c A-1: pierwszy i ostatni wiersz link_status = 1 (24.11.2026, 14:25:03.390 – 14:25:20.392 UTC)."""
     start, end, description, exclude = admin.execute(
-        "SELECT start_time, end_time, description, exclude_from_analytics FROM data_windows WHERE kind = 'plc_program_download'").fetchone()
+        "SELECT start_time, end_time, description, exclude_from_analytics FROM data_windows WHERE kind = 'plc_program_download' ORDER BY start_time LIMIT 1").fetchone()
     assert start.isoformat() == "2026-11-24T14:25:03.390000+00:00" and end.isoformat() == "2026-11-24T14:25:20.392000+00:00"
     assert description == "Download programu PLC (Grzegorz), reset liczników FB" and exclude is True
+
+
+def test_plc1_download_window_of_25_november_has_the_exact_boundaries_from_the_data(admin):
+    """E2-PLC2 (migracja 006): pierwszy i ostatni wiersz link_status != 0 (25.11.2026, 08:16:10.574 – 08:16:18.577 UTC)."""
+    rows = admin.execute(
+        "SELECT start_time, end_time, description, exclude_from_analytics FROM data_windows "
+        "WHERE kind = 'plc_program_download' ORDER BY start_time").fetchall()
+    assert len(rows) == 2
+    start, end, description, exclude = rows[1]
+    assert start.isoformat() == "2026-11-25T08:16:10.574000+00:00" and end.isoformat() == "2026-11-25T08:16:18.577000+00:00"
+    assert "PLC-1" in description and exclude is True
