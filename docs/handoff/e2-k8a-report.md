@@ -117,3 +117,16 @@ Część A zakończona. Zrzuty z adnotacją `ipc_reboot` dostarczył Grzegorz: `
 Część B (po 26.11 00:00 UTC; RAM po dobie od 25.11 11:58 UTC, więc najwcześniej 26.11 po 12:00 UTC): kompresja i rozmiar, RAM vs `mem_limit` z `memory.peak` i `oom_kill`, krok n4 (`reactive_neg_varh` 4800 → 4900), uzupełnienie `etap-2.md`.
 
 Stop: czekam na review architekta części A.
+
+## 12. Pomiar pamięci w tle (cron, założony 25.11.2026 ok. 14:29 czasu lokalnego)
+
+Żeby część B miała przebieg z całej doby, a nie jedną próbkę: crontab użytkownika `jumo` (bez sudo, bez zmian w stosie, same odczyty), wpis `* * * * * /home/jumo/aip-monitor/sample.sh >/dev/null 2>&1`.
+Skrypt `~/aip-monitor/sample.sh` co minutę zapisuje do `~/aip-monitor/stats-YYYYMMDD.log` (czas UTC, plik dobowy):
+- `STATS <kontener> <użycie> / <limit> <%>` z `docker stats --no-stream` dla każdego `aip-*`,
+- `CGROUP <kontener> peak_bytes=<memory.peak> events: <memory.events>` (w tym `oom` i `oom_kill`) z cgroup kontenera (`/sys/fs/cgroup/system.slice/docker-<id>.scope`, czytelne bez sudo).
+10 wierszy na minutę (5 kontenerów × 2), ok. 14 400 wierszy i ok. 1,5 MB na dobę; skrypt niczego nie usuwa (stare pliki kasuje się ręcznie).
+**Kontrola:** po 3 minutach od założenia plik rośnie równo co minutę (znaczniki 13:30:01, 13:31:01, 13:32:01 UTC, 40 wierszy po 4 próbkach razem z ręcznym uruchomieniem 13:29:32), 0 błędów. Pierwsze odczyty: Grafana 145–147 MiB z 512, `oom_kill` = 0 dla wszystkich; `memory.peak` Grafany 411 729 920 B (392,7 MiB = 76,7 % limitu) – to szczyt od utworzenia kontenera 13:11 UTC wraz z uruchomionym wtedy harnessem paneli na produkcji, a nie wartość ustalona; interpretacja w części B z przebiegiem dobowym.
+Wyłączenie pomiaru: `ssh jumo@192.168.0.213 "crontab -r"` (crontab `jumo` zawierał wyłącznie ten wpis).
+
+Stop: pomiar działa, część B po poleceniu Grzegorza.
+
