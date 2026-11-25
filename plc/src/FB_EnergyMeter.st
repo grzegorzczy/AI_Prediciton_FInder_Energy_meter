@@ -8,6 +8,9 @@ VAR_INPUT
     awEnergyExp       : ARRAY[0..3] OF WORD;
     awEnergyMant      : ARRAY[0..7] OF WORD;
     awIdentity        : ARRAY[0..11] OF WORD;
+    awQuality         : ARRAY[0..25] OF WORD;   // 32570..32595 (map v2, 25.11.2026)
+    awTemp            : ARRAY[0..1] OF WORD;    // 32658..32659
+    awRunTime         : ARRAY[0..1] OF WORD;    // 32480..32481
     xSwapWords        : BOOL := FALSE;          // Finder 7M.24: high word first -> FALSE
     tErrorHold        : TIME := T#3S;           // COMM_ERROR is cleared only after this time without any error
 END_VAR
@@ -25,6 +28,15 @@ VAR_OUTPUT
     iEnergyExportExp   : INT;
     rEnergyImport_kWh  : REAL;
     rEnergyExport_kWh  : REAL;
+    diReactivePosMant  : DINT;   // n2 (energy at Q > 0), varh = mant * 10^exp
+    iReactivePosExp    : INT;
+    diReactiveNegMant  : DINT;   // n4 (energy at Q < 0)
+    iReactiveNegExp    : INT;
+    rThdVoltage_pct    : REAL;   // THD U1, 32594
+    rThdCurrent_pct    : REAL;   // THD I1, 32588
+    rPhaseAngle_deg    : REAL;   // angle U1-I1, 32570 (negative at Q < 0, measured 25.11.2026)
+    rTemperature_C     : REAL;   // internal meter temperature, 32658
+    rRunTime_s         : REAL;   // meter run time, 32480
     awSerial           : ARRAY[0..3] OF WORD;
     sSerial            : STRING(8);
     uiStatus           : UINT;   // 0 = OK, 1 = COMM_ERROR, 2 = NO_DATA (no answer since start)
@@ -112,6 +124,22 @@ iEnergyExportExp   := WORD_TO_INT(awEnergyExp[2]);
 
 rEnergyImport_kWh := LREAL_TO_REAL(DINT_TO_LREAL(diEnergyImportMant) * EXPT(LREAL#10.0, INT_TO_LREAL(iEnergyImportExp)) / 1000.0);
 rEnergyExport_kWh := LREAL_TO_REAL(DINT_TO_LREAL(diEnergyExportMant) * EXPT(LREAL#10.0, INT_TO_LREAL(iEnergyExportExp)) / 1000.0);
+
+// 3b. Reactive energy counters (map v2): n2 = mant[2..3] / exp[1], n4 = mant[6..7] / exp[3]
+uConv.dwRaw := FC_WordsToDword(wFirst := awEnergyMant[2], wSecond := awEnergyMant[3], xSwapWords := xSwapWords);
+diReactivePosMant := uConv.diInt;
+iReactivePosExp   := WORD_TO_INT(awEnergyExp[1]);
+
+uConv.dwRaw := FC_WordsToDword(wFirst := awEnergyMant[6], wSecond := awEnergyMant[7], xSwapWords := xSwapWords);
+diReactiveNegMant := uConv.diInt;
+iReactiveNegExp   := WORD_TO_INT(awEnergyExp[3]);
+
+// 3c. Power quality, temperature, run time (map v2; values checked online in step PLC-1, 25.11.2026)
+rPhaseAngle_deg := FC_WordsToReal(wFirst := awQuality[0],  wSecond := awQuality[1],  xSwapWords := xSwapWords);
+rThdCurrent_pct := FC_WordsToReal(wFirst := awQuality[18], wSecond := awQuality[19], xSwapWords := xSwapWords);
+rThdVoltage_pct := FC_WordsToReal(wFirst := awQuality[24], wSecond := awQuality[25], xSwapWords := xSwapWords);
+rTemperature_C  := FC_WordsToReal(wFirst := awTemp[0],     wSecond := awTemp[1],     xSwapWords := xSwapWords);
+rRunTime_s      := FC_WordsToReal(wFirst := awRunTime[0],  wSecond := awRunTime[1],  xSwapWords := xSwapWords);
 
 // 4. Serial number (registers 30009..30012, ASCII, high byte first)
 pbySerial := ADR(sSerial);

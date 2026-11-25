@@ -68,7 +68,7 @@ Kolejny licznik dostanie blok od bazy 60 (blok = 50 rejestrów, offsety jak niż
 
 Blok licznika jest w v2 pełny (offsety 0–49). Liczniki o podwyższonej rozdzielczości (30462–30485) – etap 4, nowa wersja mapy.
 
-**Energia bierna n2/n4 (v2):** nazwy wg znaku Q, a nie „pobrana/oddana”. Stan 23.11.2026: n2 = 0, n4 = 4,5 kvarh, a obciążenie ma stale Q < 0 – stąd n4 = energia przy Q < 0. Potwierdzenie przy pierwszym kroku n4 o 100 varh (przy Q ≈ −9 var ok. 11 h). W konwencji odbiornika Q > 0 = indukcyjna, Q < 0 = pojemnościowa.
+**Energia bierna n2/n4 (v2):** nazwy wg znaku Q, a nie „pobrana/oddana”. Stan 23.11.2026: n2 = 0, n4 = 4,5 kvarh, a obciążenie ma stale Q < 0 – stąd n4 = energia przy Q < 0. ✔ Potwierdzone 25.11.2026 (PLC-2, podgląd online): n4 wzrosło z 45 do 48 (4,8 kvarh), n2 nadal 0, przy stale Q < 0. W konwencji odbiornika Q > 0 = indukcyjna, Q < 0 = pojemnościowa.
 
 **Kąt a współczynnik mocy:** przy THD prądu ok. 140 % PF (0,37) ≠ cos φ = cos(kąt) (0,64); PF = cos φ / √(1 + THD_I²). Zmierzone 25.11.2026 w PLC-1.
 
