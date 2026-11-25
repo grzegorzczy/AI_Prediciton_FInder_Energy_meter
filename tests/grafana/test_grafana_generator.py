@@ -83,7 +83,7 @@ def test_heatmap_uses_one_value_scale_and_its_own_time_range():
     """K7-V1: wspólna skala 0–100% dla wszystkich komórek, ciągły schemat kolorów, własny zakres czasu."""
     panel = next(p for (n, t), p in _panels().items() if t.startswith("Profil: godzina"))
     defaults = panel["fieldConfig"]["defaults"]
-    assert defaults["color"] == {"mode": "continuous-GrYlRd"} and defaults["min"] == 0 and defaults["max"] == 100
+    assert defaults["color"]["mode"] == "continuous-blues" and defaults["min"] == 0 and defaults["max"] == 100
     assert defaults["custom"]["cellOptions"]["type"] == "color-background"
     assert panel["timeFrom"] == "28d" and "28" in panel["title"]
 
@@ -114,7 +114,7 @@ def test_in_progress_buckets_are_marked_and_not_counted_as_gaps():
 def test_empty_error_code_panel_has_a_time_field_and_a_friendly_message():
     """K7-V4: wiersz-wartownik daje pole czasu; komunikat „Brak błędów w zakresie”."""
     panel = _panels()[("diagnostyka", "Kod błędu komunikacji PLC–licznik (meter_error_code)")]
-    assert "UNION ALL SELECT $__timeFrom()::timestamptz, NULL" in panel["targets"][0]["rawSql"]
+    assert "UNION ALL SELECT $__timeFrom()::timestamptz, 0" in panel["targets"][0]["rawSql"]
     assert panel["fieldConfig"]["defaults"]["noValue"] == "Brak błędów w zakresie"
 
 
@@ -150,3 +150,60 @@ def json_text() -> str:
     import json
 
     return json.dumps(dashboards())
+
+
+# --- k7c: W-1…W-9 ---------------------------------------------------------------------------------------------------------
+
+def test_heatmap_is_single_hue_and_missing_cells_are_transparent():
+    """W-1: skala sekwencyjna (bez zieleni i czerwieni), brak danych = przezroczysta komórka bez liczby."""
+    panel = next(p for (n, t), p in _panels().items() if t.startswith("Profil: godzina"))
+    defaults = panel["fieldConfig"]["defaults"]
+    assert defaults["color"]["mode"] == "continuous-blues"
+    special = defaults["mappings"][0]
+    assert special["type"] == "special" and special["options"]["match"] == "null+nan"
+    assert special["options"]["result"]["text"] == "" and special["options"]["result"]["color"] == "transparent"
+
+
+def test_error_code_panel_shows_codes_only_during_errors_with_distinct_colours():
+    """W-2: poza błędem „Brak błędu”, trzy kody w trzech kolorach."""
+    panel = _panels()[("diagnostyka", "Kod błędu komunikacji PLC–licznik (meter_error_code)")]
+    options = panel["fieldConfig"]["defaults"]["mappings"][0]["options"]
+    assert options["0"]["text"] == "Brak błędu" and options["0"]["color"] == "green"
+    colours = {options[c]["color"] for c in ("161", "162", "163")}
+    assert len(colours) == 3
+    sql = panel["targets"][0]["rawSql"]
+    assert "interval '1 second', 0" in sql and "$__timeFrom()::timestamptz, 0" in sql
+
+
+def test_incomplete_minute_is_not_drawn_in_the_energy_line_and_coverage_series_are_named_alike():
+    """W-3, W-4: jedna nazwa i definicja pokrycia upłynionej części dla minuty, godziny i doby."""
+    generator = load_generator()
+    for key in (("energia", "Zużycie na minutę"), ("energia", "Zużycie na godzinę"), ("energia", "Zużycie na dobę (ostatnie 14d)")):
+        panel = _panels()[key]
+        assert generator.PART in panel["targets"][0]["rawSql"] and generator.PART in panel["description"], key
+    minute = _panels()[("energia", "Zużycie na minutę")]
+    assert "THEN active_power_sum" in minute["targets"][0]["rawSql"]          # energia tylko dla pełnych minut
+    assert minute["fieldConfig"]["defaults"]["unit"] == "suffix: Wh"           # bez mieszania mWh i Wh
+    assert "Pokrycie doby" in _panels()[("przeglad", "Zużycie dziś i wczoraj")]["targets"][0]["rawSql"]
+
+
+def test_k7c_formatting_fixes():
+    """W-5 (decimals 2), W-6 (słupki), W-7 (krótkie nagłówki), W-8 (wysokość), W-9 (kolor i zapas osi pasm)."""
+    panels = _panels()
+    for key in (("energia", "Moc: bieżący zakres a poprzednia doba"), ("energia", "Moc: bieżący zakres a poprzedni tydzień"),
+                ("energia", "Moc bazowa (5. percentyl nocą)")):
+        assert panels[key]["fieldConfig"]["defaults"]["decimals"] == 2, key
+    assert panels[("energia", "Moc bazowa (5. percentyl nocą)")]["fieldConfig"]["defaults"]["custom"]["drawStyle"] == "bars"
+    control = next(p for (n, t), p in panels.items() if t.startswith("Kontrola całki mocy"))
+    for header in ("Licznik [Wh]", "Ekstrap. [Wh]", "W rozdz.", "Rozdz. [Wh]", "Luki"):
+        assert header in control["targets"][0]["rawSql"]
+    assert panels[("na-zywo", "Wartości w oknie")]["gridPos"]["h"] >= 9
+    assert panels[("jakosc", "Poza pasmem U [min]")] and panels[("energia", "Moc maks. profilu")]["gridPos"]["w"] >= 6
+    for key, band in ((("jakosc", "Napięcie (min, średnia, maks.)"), "granica pasma"), (("jakosc", "Odchyłka częstotliwości od znamionowej"), "granica")):
+        panel = panels[key]
+        overrides = {o["matcher"]["options"]: {p["id"]: p["value"] for p in o["properties"]} for o in panel["fieldConfig"]["overrides"]}
+        band_props = next(v for k, v in overrides.items() if k.startswith(".*") and band in k)
+        assert band_props["color"]["fixedColor"] == "red" and band_props["custom.lineWidth"] == 2
+        hidden = overrides["Zakres osi.*"]
+        assert hidden["custom.hideFrom"] == {"legend": True, "tooltip": True, "viz": False} and hidden["custom.lineWidth"] == 0
+        assert "Zakres osi (góra)" in panel["targets"][0]["rawSql"] and "Zakres osi (dół)" in panel["targets"][0]["rawSql"]

@@ -81,7 +81,10 @@ TILE_MAP = mapping({**CODES["meter"], NO_DATA_CODE: "Brak danych z PLC", NO_METE
                    None)
 TILE_MAP[0]["options"][str(NO_DATA_CODE)]["color"] = "red"
 TILE_MAP[0]["options"][str(NO_METER_CODE)]["color"] = "orange"
-ERROR_MAP = mapping({c: f"{c} {n}" for c, n in CODES["errors"].items()}, {0: ("0 (brak kodu)", "text")})
+ERROR_COLORS = {161: "orange", 162: "red", 163: "purple"}          # każdy kod inny kolor (K7c W-2)
+ERROR_MAP = mapping({c: f"{c} {n}" for c, n in CODES["errors"].items()}, {0: ("Brak błędu", "green")})
+for _code, _color in ERROR_COLORS.items():
+    ERROR_MAP[0]["options"][str(_code)]["color"] = _color
 
 
 # --- budowanie paneli -------------------------------------------------------------------------------------------------------
@@ -281,21 +284,22 @@ def overview() -> Dash:
                "Energia czynna z pomiarów od północy (czas lokalny): całka mocy, czyli suma mocy z obecnych próbek × okres próbkowania. Przy pokryciu poniżej 100% to dolna granica "
                "(luki nie są interpolowane). Pokrycie i szacunek pełnej doby w tabeli obok.",
                [target(f"SELECT now() AS time, integral_wh AS \"Energia\" FROM energy_daily_check WHERE {DEV} AND day = {day}", "table")],
-               unit="watth", decimals=1), 5, 5, new_row=True)
+               unit="watth", decimals=1), 4, 5, new_row=True)
     d.add(stat("Zużycie wczoraj", "Energia czynna z pomiarów za poprzednią dobę (czas lokalny), jak obok. Dolna granica przy pokryciu poniżej 100%.",
                [target(f"SELECT now() AS time, integral_wh AS \"Energia\" FROM energy_daily_check WHERE {DEV} AND day = {day} - 1", "table")],
-               unit="watth", decimals=1), 5, 5)
+               unit="watth", decimals=1), 4, 5)
     d.add(table("Zużycie dziś i wczoraj",
-                "Zawsze dwie ostatnie doby lokalne, niezależnie od zakresu czasu. Z pomiarów [Wh]: energia z całki mocy (dolna granica). Pokrycie: część doby z pomiarem mocy (dla bieżącej doby "
-                "także godziny, które jeszcze nie nastąpiły). Ekstrapolacja [Wh]: energia / pokrycie, tylko przy pokryciu ≥ 50%. Licznik [Wh]: przyrost licznika wzorcowego "
+                "Zawsze dwie ostatnie doby lokalne, niezależnie od zakresu czasu. Z pomiarów [Wh]: energia z całki mocy (dolna granica). Pokrycie doby: część CAŁEJ doby z pomiarem mocy (dla bieżącej doby "
+                "także godziny, które jeszcze nie nastąpiły; kafelek „Pokrycie danych od północy” liczy tylko upłynioną część). Ekstrapolacja [Wh]: energia / pokrycie, tylko przy pokryciu ≥ 50%. Licznik [Wh]: przyrost licznika wzorcowego "
                 "(kwantyzacja 100 Wh, więc informacyjnie). Zakończona: doba już się skończyła.",
-                [target(f"SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Z pomiarów\", coverage AS \"Pokrycie\", "
+                [target(f"SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Z pomiarów\", coverage AS \"Pokrycie doby\", "
                         f"integral_extrapolated_wh AS \"Ekstrapolacja\", counter_delta_wh AS \"Licznik\", "
                         f"day_complete AS \"Zakończona\" FROM energy_daily_check WHERE {DEV} AND day >= {day} - 1 ORDER BY day DESC",
                         "table")],
                 decimals=0,
-                overrides=[{"matcher": {"id": "byName", "options": "Pokrycie"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 0}]}]),
-          14, 5)
+                custom={"minWidth": 50, "align": "right"},
+                overrides=[{"matcher": {"id": "byName", "options": "Pokrycie doby"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 0}]}]),
+          16, 5)
     d.add(table("Moc maksymalna dziś",
                 "Minuta z największą mocą czynną od północy (czas lokalny) i jej wartość. Dokładność czasu: jedna minuta.",
                 [target(f"SELECT bucket AS \"Minuta\", active_power_max AS \"Moc maks. [W]\" FROM energy_1m WHERE {DEV} "
@@ -357,7 +361,7 @@ def live() -> Dash:
                         "last(value, time) AS \"Ostatnia\", min(value) AS \"Min\", max(value) AS \"Maks\", "
                         "avg(value) AS \"Średnia\" FROM measurements WHERE $__timeFilter(time) AND "
                         f"{DEV} AND metric IN ('voltage','current','active_power','reactive_power','apparent_power','power_factor','frequency') "
-                        "GROUP BY metric ORDER BY 1", "table")], decimals=2), 24, 7, new_row=True)
+                        "GROUP BY metric ORDER BY 1", "table")], decimals=2), 24, 9, new_row=True)
     for i, (metric, short, title, unit, desc, width) in enumerate(LIVE):
         extra = {"min_": 0, "max_": 1} if metric == "power_factor" else {}
         last = i == len(LIVE) - 1
@@ -377,26 +381,31 @@ def quality() -> Dash:
     band = "$u_nom * (1 - $u_band_pct / 100.0)"
     band_hi = "$u_nom * (1 + $u_band_pct / 100.0)"
     dashed_red = [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
-                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}, {"id": "custom.lineWidth", "value": 2}]
+    # Linia dokładnie na brzegu obszaru wykresu bywa przycinana (górna wyglądała na szarą, K7c W-9): niewidoczne serie dają zapas osi.
+    hidden_range = [{"matcher": {"id": "byRegexp", "options": "Zakres osi.*"},
+                     "properties": [{"id": "custom.lineWidth", "value": 0}, {"id": "custom.fillOpacity", "value": 0},
+                                    {"id": "custom.hideFrom", "value": {"legend": True, "tooltip": True, "viz": False}}]}]
     d.add(timeseries("Napięcie (min, średnia, maks.)",
                      "Napięcie [V] w kroku wykresu: minimum, średnia i maksimum z agregatu minutowego. Czerwone przerywane linie to granice pasma orientacyjnego "
                      "(napięcie znamionowe ± pasmo %); linia napięcia poza nimi oznacza wyjście z pasma.",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), min(voltage_min) AS \"Minimum\", "
                              "sum(voltage_sum) / nullif(sum(voltage_n), 0) AS \"Średnia\", max(voltage_max) AS \"Maksimum\", "
-                             f"{band} AS \"Dolna granica pasma\", {band_hi} AS \"Górna granica pasma\" "
+                             f"{band} AS \"Dolna granica pasma\", {band_hi} AS \"Górna granica pasma\", "
+                             f"{band} - 2 AS \"Zakres osi (dół)\", {band_hi} + 2 AS \"Zakres osi (góra)\" "
                              f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1")],
                      unit="volt", span_ms=150000, decimals=1,
-                     overrides=[{"matcher": {"id": "byRegexp", "options": ".*granica pasma"}, "properties": dashed_red}]), 16, 9)
-    d.add(stat("Minuty poza pasmem U",
+                     overrides=[{"matcher": {"id": "byRegexp", "options": ".*granica pasma"}, "properties": dashed_red}, *hidden_range]), 14, 9)
+    d.add(stat("Poza pasmem U [min]",
                "Liczba minut w wybranym zakresie, w których minimum lub maksimum napięcia wyszło poza pasmo (napięcie znamionowe ± pasmo %). "
                "Pasmo jest orientacyjne i nie oznacza oceny zgodności z normą.",
                [target(f"SELECT now() AS time, count(*) AS \"Minuty\" FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} "
                        f"AND (voltage_min < {band} OR voltage_max > {band_hi})", "table")], decimals=0,
-               thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}]), 4, 9)
-    d.add(stat("Minuty z danymi",
-               "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu „Minuty poza pasmem U”).",
+               thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}]), 5, 9)
+    d.add(stat("Z danymi U [min]",
+               "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu „Poza pasmem U [min]”).",
                [target(f"SELECT now() AS time, count(*) FILTER (WHERE voltage_n > 0) AS \"Minuty\" FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV}",
-                       "table")], decimals=0, color_mode="none"), 4, 9)
+                       "table")], decimals=0, color_mode="none"), 5, 9)
     d.add(barchart("Rozkład napięcia (histogram)",
                    "Liczba minut w koszykach po 0,5 V według średniego napięcia minuty, w wybranym zakresie czasu.",
                    [target(f"SELECT to_char(floor(voltage_sum / voltage_n * 2) / 2, 'FM999.0') AS \"Napięcie [V]\", count(*) AS \"Minuty\" "
@@ -405,10 +414,11 @@ def quality() -> Dash:
     d.add(timeseries("Odchyłka częstotliwości od znamionowej",
                      "Średnia częstotliwość sieci minus częstotliwość znamionowa [Hz] w kroku wykresu, z granicami pasma (± zmienna, czerwone przerywane linie).",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(frequency_sum) / nullif(sum(frequency_n), 0) - $f_nom AS \"Odchyłka\", "
-                             "$f_band_hz AS \"Górna granica\", -$f_band_hz AS \"Dolna granica\" "
+                             "$f_band_hz AS \"Górna granica\", -$f_band_hz AS \"Dolna granica\", "
+                             "$f_band_hz * 1.1 AS \"Zakres osi (góra)\", -$f_band_hz * 1.1 AS \"Zakres osi (dół)\" "
                              f"FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1 ORDER BY 1")],
                      unit="suffix: Hz", span_ms=150000, decimals=2,
-                     overrides=[{"matcher": {"id": "byRegexp", "options": ".*granica"}, "properties": dashed_red}]), 12, 8)
+                     overrides=[{"matcher": {"id": "byRegexp", "options": ".*granica"}, "properties": dashed_red}, *hidden_range]), 12, 8)
     d.add(timeseries("Współczynnik mocy (cos φ)",
                      "Współczynnik mocy PF: średnia w kroku wykresu, z agregatu minutowego (0–1).",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(power_factor_sum) / nullif(sum(power_factor_n), 0) AS \"cos φ\" "
@@ -426,6 +436,7 @@ def quality() -> Dash:
 # --- 4. Energia i profil -----------------------------------------------------------------------------------------------------
 
 WEEKDAYS = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Niedz"]
+PART = "Pokrycie upłynionej części (w toku)"      # jedna nazwa i definicja dla minuty, godziny i doby (K7c W-4)
 PROFILE_RANGE = "28d"
 DAYS_RANGE = "14d"
 
@@ -442,53 +453,56 @@ def energy() -> Dash:
                  f"Panele „Zużycie na dobę”, profil i kontrola z licznikiem mają własny zakres czasu (ostatnie {DAYS_RANGE} i {PROFILE_RANGE}), niezależny od pulpitu.",
                  time_from="now-7d")
     d.add(timeseries("Zużycie na minutę",
-                     "Energia czynna [Wh] w każdej minucie (całka mocy, linia) oraz pokrycie minuty pomiarem (żółta linia po prawej; bieżąca minuta pomarańczową przerywaną, "
-                     "liczona względem upłyniętej części minuty). Obie osie zaczynają się od zera. Panel działa dla zakresów do 7 dni; dla dłuższych użyj paneli godzinowego i dobowego.",
-                     [target(f"SELECT bucket AS time, active_power_sum * {POLL} / 3600.0 AS \"Energia [Wh]\", "
+                     "Energia czynna [Wh] w każdej minucie (całka mocy, linia; niepełna, bieżąca minuta nie jest rysowana, żeby nie wyglądała na spadek zużycia) oraz pokrycie pełnych minut "
+                     "pomiarem (żółta linia po prawej). Pomarańczowy punkt „" + PART + "” to pokrycie samej upłyniętej części bieżącej minuty (inna definicja niż pokrycie pełnych minut). "
+                     "Obie osie zaczynają się od zera. Panel działa dla zakresów do 7 dni; dla dłuższych użyj paneli godzinowego i dobowego.",
+                     [target(f"SELECT bucket AS time, CASE WHEN bucket + interval '1 minute' <= now() THEN active_power_sum * {POLL} / 3600.0 END AS \"Energia [Wh]\", "
                              f"CASE WHEN bucket + interval '1 minute' <= now() THEN least(1.0, active_power_n * {POLL} / 60.0) END AS \"Pokrycie\", "
                              f"CASE WHEN bucket + interval '1 minute' > now() THEN least(1.0, active_power_n * {POLL} / greatest({_elapsed('bucket', '1 minute')}, 1)) END "
-                             f"AS \"Pokrycie bieżącej minuty\" FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} AND {SPAN_GUARD_7D} ORDER BY 1")],
-                     unit="watth", span_ms=150000, decimals=3, min_=0,
-                     overrides=[coverage_override("Pokrycie"), coverage_override("Pokrycie bieżącej minuty", dashed=True, style="points")]), 24, 8)
+                             f"AS \"{PART}\" FROM energy_1m WHERE $__timeFilter(bucket) AND {DEV} AND {SPAN_GUARD_7D} ORDER BY 1")],
+                     unit="suffix: Wh", span_ms=150000, decimals=3, min_=0,
+                     overrides=[coverage_override("Pokrycie"), coverage_override(PART, dashed=True, style="points")]), 24, 8)
     d.add(timeseries("Zużycie na godzinę",
                      "Energia czynna [Wh] w każdej godzinie (agregat godzinny; słupek zaczyna się na początku godziny) oraz pokrycie godziny pomiarem (żółta linia po prawej). "
-                     "Bieżąca godzina: pokrycie liczone względem upłyniętej części godziny i oznaczone pomarańczowo, żeby brak końcówki nie wyglądał na awarię.",
+                     "Pomarańczowy punkt „" + PART + "” (godzina w toku) to pokrycie samej upłyniętej części godziny, a nie całej godziny, żeby brak końcówki nie wyglądał na awarię.",
                      [target(f"SELECT bucket AS time, active_power_sum * {POLL} / 3600.0 AS \"Energia [Wh]\", "
                              f"CASE WHEN bucket + interval '1 hour' <= now() THEN least(1.0, active_power_n * {POLL} / 3600.0) END AS \"Pokrycie\", "
                              f"CASE WHEN bucket + interval '1 hour' > now() THEN least(1.0, active_power_n * {POLL} / greatest({_elapsed('bucket', '1 hour')}, 1)) END "
-                             f"AS \"Pokrycie godziny w toku\" FROM energy_1h WHERE $__timeFilter(bucket) AND {DEV} ORDER BY 1")],
+                             f"AS \"{PART}\" FROM energy_1h WHERE $__timeFilter(bucket) AND {DEV} ORDER BY 1")],
                      unit="watth", bars=True, span_ms=9000000, decimals=2, min_=0,
-                     overrides=[coverage_override("Pokrycie"), coverage_override("Pokrycie godziny w toku", dashed=True, style="points")]), 12, 8, new_row=True)
+                     overrides=[coverage_override("Pokrycie"), coverage_override(PART, dashed=True, style="points")]), 12, 8, new_row=True)
     day_len = f"extract(epoch FROM ((day + 1)::timestamp AT TIME ZONE '{TZ}') - (day::timestamp AT TIME ZONE '{TZ}'))"
     day_elapsed = f"extract(epoch FROM now() - (day::timestamp AT TIME ZONE '{TZ}'))"
     d.add(timeseries(f"Zużycie na dobę (ostatnie {DAYS_RANGE})",
-                     "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) i pokrycie doby pomiarem (żółte punkty po prawej; bieżąca doba pomarańczowa, liczona względem upłyniętej części doby). "
+                     "Energia czynna [Wh] w dobie lokalnej (Europe/Warsaw) i pokrycie doby pomiarem (żółte punkty po prawej). Pomarańczowy punkt „" + PART + "” (doba w toku) to pokrycie samej upłyniętej części doby, a nie całej doby. "
                      f"Panel ma własny zakres: ostatnie {DAYS_RANGE}, niezależnie od pulpitu.",
                      [target(f"SELECT day::timestamp AT TIME ZONE '{TZ}' AS time, integral_wh AS \"Energia [Wh]\", "
                              f"CASE WHEN day_complete THEN coverage END AS \"Pokrycie\", "
-                             f"CASE WHEN NOT day_complete THEN least(1.0, coverage * {day_len} / greatest({day_elapsed}, 1)) END AS \"Pokrycie doby w toku\" "
+                             f"CASE WHEN NOT day_complete THEN least(1.0, coverage * {day_len} / greatest({day_elapsed}, 1)) END AS \"{PART}\" "
                              f"FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY 1")],
                      unit="watth", bars=True, span_ms=200000000, decimals=1, min_=0, time_from=DAYS_RANGE,
-                     overrides=[coverage_override("Pokrycie", style="points"), coverage_override("Pokrycie doby w toku", dashed=True, style="points")]), 12, 8)
+                     overrides=[coverage_override("Pokrycie", style="points"), coverage_override(PART, dashed=True, style="points")]), 12, 8)
     grouped = (f"SELECT extract(hour FROM bucket AT TIME ZONE '{TZ}')::int AS hour, extract(isodow FROM bucket AT TIME ZONE '{TZ}')::int AS dow, "
                f"sum(active_power_sum) / nullif(sum(active_power_n), 0) AS w FROM energy_1h WHERE $__timeFilter(bucket) AND {DEV} GROUP BY 1, 2")
     cols = ", ".join(f"max(p) FILTER (WHERE dow = {i + 1}) AS \"{name}\"" for i, name in enumerate(WEEKDAYS))
     d.add(table(f"Profil: godzina × dzień tygodnia (ostatnie {PROFILE_RANGE})",
                 f"Średnia moc czynna dla każdej godziny doby (czas lokalny) i dnia tygodnia w ostatnich {PROFILE_RANGE} (własny zakres panelu, z agregatu godzinnego), "
-                "jako **procent największej średniej mocy w profilu** (100% = wartość z kafelka obok). Jedna wspólna skala kolorów dla wszystkich komórek: od zielonego (mało) przez żółty "
-                "do czerwonego (dużo). Pusta komórka bez koloru oznacza brak danych.",
+                "jako **procent największej średniej mocy w profilu** (100% = wartość z kafelka obok). Jedna wspólna, jednobarwna skala od jasnoniebieskiego (mało) do ciemnoniebieskiego (dużo): "
+                "to profil zużycia, nie ocena dobrze/źle. Pusta, przezroczysta komórka bez liczby oznacza brak danych.",
                 [target(f"SELECT hour AS \"Godzina\", {cols} FROM (SELECT hour, dow, 100.0 * w / nullif(max(w) OVER (), 0) AS p FROM ({grouped}) g) n "
                         "GROUP BY hour ORDER BY hour", "table")],
                 custom={"cellOptions": {"type": "color-background", "mode": "gradient"}}, decimals=0, unit="percent", min_=0, max_=100,
                 time_from=PROFILE_RANGE,
                 overrides=[{"matcher": {"id": "byName", "options": "Godzina"},
                             "properties": [{"id": "custom.cellOptions", "value": {"type": "auto"}}, {"id": "unit", "value": "none"},
-                                           {"id": "color", "value": {"mode": "fixed", "fixedColor": "text"}}]}]), 20, 12, new_row=True)
-    d.panels[-1]["fieldConfig"]["defaults"]["color"] = {"mode": "continuous-GrYlRd"}
-    d.add(stat("Maks. średnia moc profilu",
+                                           {"id": "color", "value": {"mode": "fixed", "fixedColor": "text"}}]}]), 18, 12, new_row=True)
+    d.panels[-1]["fieldConfig"]["defaults"]["color"] = {"mode": "continuous-blues"}
+    d.panels[-1]["fieldConfig"]["defaults"]["mappings"] = [{"type": "special", "options": {
+        "match": "null+nan", "result": {"text": "", "color": "transparent", "index": 0}}}]
+    d.add(stat("Moc maks. profilu",
                f"Największa średnia moc godzinowa w profilu obok (ostatnie {PROFILE_RANGE}) [W]: to jest 100% skali kolorów.",
                [target(f"SELECT now() AS time, max(w) AS \"Maks. średnia moc\" FROM ({grouped}) g", "table")], unit="watt", decimals=1,
-               time_from=PROFILE_RANGE, color_mode="none"), 4, 12)
+               time_from=PROFILE_RANGE, color_mode="none"), 6, 12)
     d.add(timeseries("Moc: bieżący zakres a poprzednia doba",
                      "Średnia moc czynna [W] w wybranym zakresie czasu oraz ta sama wielkość sprzed 24 godzin (przesunięta na oś bieżącego zakresu).",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" "
@@ -496,7 +510,7 @@ def energy() -> Dash:
                       target(f"SELECT $__timeGroupAlias(bucket + interval '1 day', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Doba wcześniej\" "
                              f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo()::timestamptz - interval '1 day' AND {DEV} GROUP BY 1 ORDER BY 1",
                              ref="B")],
-                     unit="watt", span_ms=150000, decimals=1), 12, 8, new_row=True)
+                     unit="watt", span_ms=150000, decimals=2), 12, 8, new_row=True)
     d.add(timeseries("Moc: bieżący zakres a poprzedni tydzień",
                      "Średnia moc czynna [W] w wybranym zakresie czasu oraz ta sama wielkość sprzed 7 dni (przesunięta na oś bieżącego zakresu).",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Teraz\" "
@@ -504,7 +518,7 @@ def energy() -> Dash:
                       target(f"SELECT $__timeGroupAlias(bucket + interval '7 days', $__interval), sum(active_power_sum) / nullif(sum(active_power_n), 0) AS \"Tydzień wcześniej\" "
                              f"FROM energy_1m WHERE bucket BETWEEN $__timeFrom()::timestamptz - interval '7 days' AND $__timeTo()::timestamptz - interval '7 days' AND {DEV} GROUP BY 1 ORDER BY 1",
                              ref="B")],
-                     unit="watt", span_ms=150000, decimals=1), 12, 8)
+                     unit="watt", span_ms=150000, decimals=2), 12, 8)
     d.add(timeseries("Moc bazowa (5. percentyl nocą)",
                      "Moc bazowa doby: 5. percentyl średniej minutowej mocy czynnej [W] w godzinach lokalnych 00:00–05:00 (obciążenie tła, gdy maszyny nie pracują). "
                      "Jedna wartość na dobę lokalną.",
@@ -512,18 +526,20 @@ def energy() -> Dash:
                              "percentile_cont(0.05) WITHIN GROUP (ORDER BY active_power_sum / active_power_n) AS \"Moc bazowa\" FROM energy_1m "
                              f"WHERE $__timeFilter(bucket) AND {DEV} AND active_power_n > 0 AND extract(hour FROM bucket AT TIME ZONE '{TZ}') < 5 "
                              "GROUP BY 1 ORDER BY 1")],
-                     unit="watt", span_ms=200000000, decimals=1, min_=0), 24, 8, new_row=True)
+                     unit="watt", bars=True, span_ms=200000000, decimals=2, min_=0), 24, 8, new_row=True)
     d.add(table(f"Kontrola całki mocy a licznik wzorcowy (doby, ostatnie {DAYS_RANGE})",
-                "Dla każdej doby lokalnej: energia z całki mocy, pokrycie, przyrost licznika wzorcowego i różnica. Licznik zmienia stan co 100 Wh, więc przy małym "
+                "Dla każdej doby lokalnej: energia z całki mocy, pokrycie doby, przyrost licznika wzorcowego i różnica. Skróty: Licznik = przyrost licznika wzorcowego, "
+                "Ekstrap. = całka uzupełniona do pełnej doby (całka / pokrycie), Rozdz. = rozdzielczość licznika, W rozdz. = różnica nie większa niż jeden krok licznika, "
+                "Luki = godziny po luce w danych. Licznik zmienia stan co 100 Wh, więc przy małym "
                 "obciążeniu przyrost dobowy to 1–2 kroki: główną miarą zgodności jest „W granicach rozdzielczości”, a odchyłka procentowa jest podawana tylko przy "
                 f"przyroście co najmniej 5 kroków licznika. Panel ma własny zakres: ostatnie {DAYS_RANGE}.",
-                [target(f"SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie\", counter_delta_wh AS \"Przyrost licznika [Wh]\", "
-                        "integral_extrapolated_wh AS \"Całka uzupełniona do doby [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdzielczość [Wh]\", "
-                        "within_resolution AS \"W granicach rozdzielczości\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Doba zakończona\", "
-                        f"gap_before_count AS \"Godziny po luce\" FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' "
+                [target(f"SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Całka [Wh]\", coverage AS \"Pokrycie doby\", counter_delta_wh AS \"Licznik [Wh]\", "
+                        "integral_extrapolated_wh AS \"Ekstrap. [Wh]\", diff_wh AS \"Różnica [Wh]\", resolution_wh AS \"Rozdz. [Wh]\", "
+                        "within_resolution AS \"W rozdz.\", deviation_pct AS \"Odchyłka [%]\", day_complete AS \"Zakończona\", "
+                        f"gap_before_count AS \"Luki\" FROM energy_daily_check WHERE {DEV} AND day::timestamp AT TIME ZONE '{TZ}' "
                         "BETWEEN $__timeFrom()::timestamptz - interval '1 day' AND $__timeTo() ORDER BY day DESC", "table")], decimals=1,
-                time_from=DAYS_RANGE,
-                overrides=[{"matcher": {"id": "byName", "options": "Pokrycie"}, "properties": [{"id": "unit", "value": "percentunit"}]}]),
+                time_from=DAYS_RANGE, custom={"minWidth": 50, "align": "right"},
+                overrides=[{"matcher": {"id": "byName", "options": "Pokrycie doby"}, "properties": [{"id": "unit", "value": "percentunit"}]}]),
           24, 8, new_row=True)
     return d
 
@@ -555,9 +571,14 @@ def diagnostics() -> Dash:
                          [target(_states(f"'$device'", "meter_status", "Stan licznika"))], METER_MAP), 24, 5, new_row=True)
     d.add(state_timeline("Kod błędu komunikacji PLC–licznik (meter_error_code)",
                          "Kod błędu publikowany tylko przy meter_status ≠ 0: 161 RESPONSE_TIMEOUT, 162 RESPONSE_CRC_FAIL, 163 RESPONSE_WRONG_SLAVE "
-                         "(źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Pusty pasek: brak błędów w zakresie.",
-                         [target(f"SELECT time, value AS \"Kod błędu\" FROM measurements WHERE $__timeFilter(time) AND {DEV} AND metric = 'meter_error_code' "
-                                 f"AND {SPAN_GUARD_7D} UNION ALL {SENTINEL} ORDER BY 1")], ERROR_MAP, no_value="Brak błędów w zakresie"), 24, 4, new_row=True)
+                         "(źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Kod jest pokazywany tylko w czasie błędu (meter_status ≠ 0), "
+                         "poza nim „Brak błędu” (zielony). Epizody są krótkie (ok. 4 s), więc przy długich zakresach ich opisy bywają ucięte do pierwszych znaków (np. „16”): "
+                         "przybliż wykres, żeby zobaczyć pełną nazwę.",
+                         [target("WITH s AS (SELECT time, value, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND "
+                                 f"{DEV} AND metric = 'meter_error_code' AND {SPAN_GUARD_7D} WINDOW w AS (ORDER BY time)) "
+                                 "SELECT time, value AS \"Kod błędu\" FROM s "
+                                 "UNION ALL SELECT time + interval '1 second', 0 FROM s WHERE next_time IS NULL OR next_time - time > interval '2 seconds' "
+                                 "UNION ALL SELECT $__timeFrom()::timestamptz, 0 ORDER BY 1")], ERROR_MAP, no_value="Brak błędów w zakresie"), 24, 4, new_row=True)
     d.add(timeseries("Licznik błędów komunikacji (meter_error_count)",
                      "Licznik błędów komunikacji PLC–licznik (16-bitowy, po 65535 wraca do 0; restart PLC go zeruje).",
                      [target(f"SELECT $__timeGroupAlias(time, $__interval), max(value) AS \"meter_error_count\" FROM measurements WHERE $__timeFilter(time) "

@@ -124,6 +124,34 @@
                   "fixedColor": "red",
                   "mode": "fixed"
                 }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Zakres osi.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": true,
+                  "viz": false
+                }
               }
             ]
           }
@@ -131,7 +159,7 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 16,
+        "w": 14,
         "x": 0,
         "y": 0
       },
@@ -157,7 +185,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(voltage_min) AS \"Minimum\", sum(voltage_sum) / nullif(sum(voltage_n), 0) AS \"Średnia\", max(voltage_max) AS \"Maksimum\", $u_nom * (1 - $u_band_pct / 100.0) AS \"Dolna granica pasma\", $u_nom * (1 + $u_band_pct / 100.0) AS \"Górna granica pasma\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), min(voltage_min) AS \"Minimum\", sum(voltage_sum) / nullif(sum(voltage_n), 0) AS \"Średnia\", max(voltage_max) AS \"Maksimum\", $u_nom * (1 - $u_band_pct / 100.0) AS \"Dolna granica pasma\", $u_nom * (1 + $u_band_pct / 100.0) AS \"Górna granica pasma\", $u_nom * (1 - $u_band_pct / 100.0) - 2 AS \"Zakres osi (dół)\", $u_nom * (1 + $u_band_pct / 100.0) + 2 AS \"Zakres osi (góra)\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -195,8 +223,8 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 4,
-        "x": 16,
+        "w": 5,
+        "x": 14,
         "y": 0
       },
       "id": 2,
@@ -227,7 +255,7 @@
           "refId": "A"
         }
       ],
-      "title": "Minuty poza pasmem U",
+      "title": "Poza pasmem U [min]",
       "type": "stat"
     },
     {
@@ -235,7 +263,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu „Minuty poza pasmem U”).",
+      "description": "Liczba minut w zakresie, w których jest pomiar napięcia (mianownik dla panelu „Poza pasmem U [min]”).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -248,8 +276,8 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 4,
-        "x": 20,
+        "w": 5,
+        "x": 19,
         "y": 0
       },
       "id": 3,
@@ -280,7 +308,7 @@
           "refId": "A"
         }
       ],
-      "title": "Minuty z danymi",
+      "title": "Z danymi U [min]",
       "type": "stat"
     },
     {
@@ -382,6 +410,34 @@
                   "fixedColor": "red",
                   "mode": "fixed"
                 }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Zakres osi.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": true,
+                  "viz": false
+                }
               }
             ]
           }
@@ -415,7 +471,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(frequency_sum) / nullif(sum(frequency_n), 0) - $f_nom AS \"Odchyłka\", $f_band_hz AS \"Górna granica\", -$f_band_hz AS \"Dolna granica\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(bucket, $__interval), sum(frequency_sum) / nullif(sum(frequency_n), 0) - $f_nom AS \"Odchyłka\", $f_band_hz AS \"Górna granica\", -$f_band_hz AS \"Dolna granica\", $f_band_hz * 1.1 AS \"Zakres osi (góra)\", -$f_band_hz * 1.1 AS \"Zakres osi (dół)\" FROM energy_1m WHERE $__timeFilter(bucket) AND device_id = '$device' GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],

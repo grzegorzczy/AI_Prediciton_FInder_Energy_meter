@@ -411,7 +411,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 5,
+        "w": 4,
         "x": 0,
         "y": 4
       },
@@ -464,8 +464,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 5,
-        "x": 5,
+        "w": 4,
+        "x": 4,
         "y": 4
       },
       "id": 6,
@@ -504,11 +504,15 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Zawsze dwie ostatnie doby lokalne, niezależnie od zakresu czasu. Z pomiarów [Wh]: energia z całki mocy (dolna granica). Pokrycie: część doby z pomiarem mocy (dla bieżącej doby także godziny, które jeszcze nie nastąpiły). Ekstrapolacja [Wh]: energia / pokrycie, tylko przy pokryciu ≥ 50%. Licznik [Wh]: przyrost licznika wzorcowego (kwantyzacja 100 Wh, więc informacyjnie). Zakończona: doba już się skończyła.",
+      "description": "Zawsze dwie ostatnie doby lokalne, niezależnie od zakresu czasu. Z pomiarów [Wh]: energia z całki mocy (dolna granica). Pokrycie doby: część CAŁEJ doby z pomiarem mocy (dla bieżącej doby także godziny, które jeszcze nie nastąpiły; kafelek „Pokrycie danych od północy” liczy tylko upłynioną część). Ekstrapolacja [Wh]: energia / pokrycie, tylko przy pokryciu ≥ 50%. Licznik [Wh]: przyrost licznika wzorcowego (kwantyzacja 100 Wh, więc informacyjnie). Zakończona: doba już się skończyła.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
+          },
+          "custom": {
+            "align": "right",
+            "minWidth": 50
           },
           "decimals": 0,
           "unit": ""
@@ -517,7 +521,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Pokrycie"
+              "options": "Pokrycie doby"
             },
             "properties": [
               {
@@ -534,8 +538,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 14,
-        "x": 10,
+        "w": 16,
+        "x": 8,
         "y": 4
       },
       "id": 7,
@@ -553,7 +557,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Z pomiarów\", coverage AS \"Pokrycie\", integral_extrapolated_wh AS \"Ekstrapolacja\", counter_delta_wh AS \"Licznik\", day_complete AS \"Zakończona\" FROM energy_daily_check WHERE device_id = '$device' AND day >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 1 ORDER BY day DESC",
+          "rawSql": "SELECT to_char(day, 'YYYY-MM-DD') AS \"Doba\", integral_wh AS \"Z pomiarów\", coverage AS \"Pokrycie doby\", integral_extrapolated_wh AS \"Ekstrapolacja\", counter_delta_wh AS \"Licznik\", day_complete AS \"Zakończona\" FROM energy_daily_check WHERE device_id = '$device' AND day >= (now() AT TIME ZONE 'Europe/Warsaw')::date - 1 ORDER BY day DESC",
           "refId": "A"
         }
       ],

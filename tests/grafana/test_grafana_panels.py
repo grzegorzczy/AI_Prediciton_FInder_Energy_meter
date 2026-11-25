@@ -96,3 +96,29 @@ def test_overview_age_is_fresh_and_power_is_present(grafana_data):
     assert 0 <= value <= expected + 5          # kolejne instrukcje ładowania mają własne now(), więc koniec danych bywa nowszy
     power = ds_query(expand_vars(by_title["Moc czynna teraz"]["rawSql"], M1), "time_series", now - 600, now)
     assert power["rows"] > 0
+
+
+def test_error_code_timeline_returns_to_no_error_after_each_episode(grafana_data):
+    """k7c W-2: po każdym epizodzie wiersz „0” (Brak błędu), żeby kod nie ciągnął się do końca zakresu."""
+    panel = next(p for p in DASHES["diagnostyka"]["panels"] if p["title"].startswith("Kod błędu"))
+    target = panel["targets"][0]
+    now = time.time()
+    result = ds_query(expand_vars(target["rawSql"], M1), target["format"], now - 6 * 3600, now, target["refId"])
+    assert not result["error"], result["error"]
+    values = result["frames"][0]["data"]["values"][1]
+    assert set(values) == {0.0, 162.0}
+    assert values[0] == 0.0 and values[-1] == 0.0          # zaczyna i kończy się „brakiem błędu”
+    assert values.count(162.0) > 20 and values.count(0.0) > 20
+
+
+def test_error_code_timeline_returns_to_no_error_after_each_episode(grafana_data):
+    """k7c W-2: po każdym epizodzie wiersz „0” (Brak błędu), żeby kod nie ciągnął się do końca zakresu."""
+    panel = next(p for p in DASHES["diagnostyka"]["panels"] if p["title"].startswith("Kod błędu"))
+    target = panel["targets"][0]
+    now = time.time()
+    result = ds_query(expand_vars(target["rawSql"], M1), target["format"], now - 6 * 3600, now, target["refId"])
+    assert not result["error"], result["error"]
+    values = result["frames"][0]["data"]["values"][1]
+    assert set(values) == {0.0, 162.0}
+    assert values[0] == 0.0 and values[-1] == 0.0          # zaczyna i kończy się „brakiem błędu”
+    assert values.count(162.0) > 20 and values.count(0.0) > 20

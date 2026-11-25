@@ -262,7 +262,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Kod błędu publikowany tylko przy meter_status ≠ 0: 161 RESPONSE_TIMEOUT, 162 RESPONSE_CRC_FAIL, 163 RESPONSE_WRONG_SLAVE (źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Pusty pasek: brak błędów w zakresie.",
+      "description": "Kod błędu publikowany tylko przy meter_status ≠ 0: 161 RESPONSE_TIMEOUT, 162 RESPONSE_CRC_FAIL, 163 RESPONSE_WRONG_SLAVE (źródło nazw: dokumentacja CODESYS MB_ErrorCodes, patrz docs/status-codes.md). Kod jest pokazywany tylko w czasie błędu (meter_status ≠ 0), poza nim „Brak błędu” (zielony). Epizody są krótkie (ok. 4 s), więc przy długich zakresach ich opisy bywają ucięte do pierwszych znaków (np. „16”): przybliż wykres, żeby zobaczyć pełną nazwę.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -276,22 +276,22 @@
             {
               "options": {
                 "0": {
-                  "color": "text",
+                  "color": "green",
                   "index": 3,
-                  "text": "0 (brak kodu)"
+                  "text": "Brak błędu"
                 },
                 "161": {
-                  "color": "blue",
+                  "color": "orange",
                   "index": 0,
                   "text": "161 RESPONSE_TIMEOUT"
                 },
                 "162": {
-                  "color": "blue",
+                  "color": "red",
                   "index": 1,
                   "text": "162 RESPONSE_CRC_FAIL"
                 },
                 "163": {
-                  "color": "blue",
+                  "color": "purple",
                   "index": 2,
                   "text": "163 RESPONSE_WRONG_SLAVE"
                 }
@@ -335,7 +335,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT time, value AS \"Kod błędu\" FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_error_code' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' UNION ALL SELECT $__timeFrom()::timestamptz, NULL ORDER BY 1",
+          "rawSql": "WITH s AS (SELECT time, value, lead(time) OVER w AS next_time FROM measurements WHERE $__timeFilter(time) AND device_id = '$device' AND metric = 'meter_error_code' AND ($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= interval '7 days' WINDOW w AS (ORDER BY time)) SELECT time, value AS \"Kod błędu\" FROM s UNION ALL SELECT time + interval '1 second', 0 FROM s WHERE next_time IS NULL OR next_time - time > interval '2 seconds' UNION ALL SELECT $__timeFrom()::timestamptz, 0 ORDER BY 1",
           "refId": "A"
         }
       ],

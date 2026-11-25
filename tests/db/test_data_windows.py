@@ -15,7 +15,8 @@ def test_seed_windows_are_present_and_consistent(admin):
     rows = admin.execute("SELECT kind, start_time, end_time, exclude_from_analytics FROM data_windows ORDER BY start_time").fetchall()
     kinds = [r[0] for r in rows]
     assert kinds == ["collector_start", "calm_window", "mqtt_broker_restart", "collector_stopped", "rs485_break",
-                     "plc_lan1_unplugged", "plc_program_stop", "power_outage", "collector_stopped", "deploy"]
+                     "plc_lan1_unplugged", "plc_program_stop", "power_outage", "collector_stopped", "plc_program_download",
+                     "deploy"]
     assert all(r[2] >= r[1] for r in rows)
     assert {r[0] for r in rows if not r[3]} == {"calm_window"}          # tylko okno referencyjne zostaje w analityce
 
@@ -34,7 +35,7 @@ def test_annotation_query_returns_the_windows_of_a_range(admin):
 
 
 def test_reader_reads_and_writer_and_reader_cannot_change(reader, writer):
-    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 10
+    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 11
     with pytest.raises(psycopg.Error):
         reader.execute("DELETE FROM data_windows")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -49,3 +50,11 @@ def test_constraints(admin):
     with pytest.raises(psycopg.errors.CheckViolation):
         admin.execute("INSERT INTO data_windows (start_time, end_time, kind, description) "
                       "VALUES (now(), now(), 'Zla Nazwa', 'zły rodzaj')")
+
+
+def test_plc_program_download_window_has_the_exact_boundaries_from_the_data(admin):
+    """k7c A-1: pierwszy i ostatni wiersz link_status = 1 (24.11.2026, 14:25:03.390 – 14:25:20.392 UTC)."""
+    start, end, description, exclude = admin.execute(
+        "SELECT start_time, end_time, description, exclude_from_analytics FROM data_windows WHERE kind = 'plc_program_download'").fetchone()
+    assert start.isoformat() == "2026-11-24T14:25:03.390000+00:00" and end.isoformat() == "2026-11-24T14:25:20.392000+00:00"
+    assert description == "Download programu PLC (Grzegorz), reset liczników FB" and exclude is True
