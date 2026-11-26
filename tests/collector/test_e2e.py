@@ -318,7 +318,10 @@ def test_v1_then_v2_in_flight_reads_60_registers_with_fc04_only(config):
             h.plc.set_map_version(2)
             h.plc.set_meter(v2=True)
             mark2 = time.monotonic()
-            await h.until(lambda: (h.latest("finder_7m24_1/thd_current", mark2) or {}).get("value") == 140.22)
+            # czekamy na KAŻDY temat v2: wiadomości jednego cyklu przychodzą po kolei, więc samo thd_current nie gwarantuje
+            # obecności pozostałych (wyścig widziany w E3-k1: meter_temperature jeszcze w drodze)
+            await h.until(lambda: (h.latest("finder_7m24_1/thd_current", mark2) or {}).get("value") == 140.22
+                          and all(h.latest(t, mark2) for t in V2_TOPICS))
             latest = {t: h.latest(t, mark2) for t in V2_TOPICS}
             assert latest["finder_7m24_1/phase_angle"]["value"] == -50.58 and latest["finder_7m24_1/phase_angle"]["unit"] == "°"
             assert latest["finder_7m24_1/meter_temperature"]["unit"] == "°C" and latest["finder_7m24_1/run_time"]["value"] == 1256171.0
