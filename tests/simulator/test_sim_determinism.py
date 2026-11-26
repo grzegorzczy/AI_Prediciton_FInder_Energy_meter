@@ -27,9 +27,9 @@ def test_twenty_nine_metrics_with_units(simulator):
     assert meter == list(METER_METRICS)
 
 
-def test_same_values_regardless_of_call_order_and_instance(sim_config):
-    forward = snapshot(Simulator(sim_config), MOMENTS)
-    backward = snapshot(Simulator(sim_config), list(reversed(MOMENTS)))
+def test_same_values_regardless_of_call_order_and_instance(sim_config, make_sim):
+    forward = snapshot(Simulator(sim_config), MOMENTS)                 # bez pamięci sum: liczone od zera
+    backward = snapshot(make_sim(), list(reversed(MOMENTS)))            # z pamięcią sum sesji
     assert forward == backward
 
 
@@ -41,7 +41,8 @@ def test_same_values_in_a_new_python_process(sim_config):
         "from simulator.config import load_config_dict\n"
         "from simulator.samples import Simulator\n"
         "raw = yaml.safe_load(open(sys.argv[1], encoding='utf-8'))\n"
-        "raw['simulator']['t_zero'] = '2026-12-01T00:00:00Z'\n"
+        "raw['simulator']['meter_anchor'] = '2026-11-17T00:00:00Z'\n"
+        "raw['simulator']['devices'][4]['bearing_installed_at'] = '2026-09-08T00:00:00Z'\n"
         "sim = Simulator(load_config_dict(raw))\n"
         f"print(json.dumps({{t: sim.samples_at(t) for t in {MOMENTS!r}}}))\n"
     )
@@ -52,16 +53,16 @@ def test_same_values_in_a_new_python_process(sim_config):
     assert json.loads(out) == expected
 
 
-def test_other_seed_gives_other_noise(make_raw):
-    base = Simulator(load_config_dict(make_raw()))
-    other = Simulator(load_config_dict(make_raw(lambda r: r["simulator"].update(seed=1))))
+def test_other_seed_gives_other_noise(make_raw, make_sim):
+    base = make_sim(load_config_dict(make_raw()))
+    other = make_sim(load_config_dict(make_raw(lambda r: r["simulator"].update(seed=1))))
     voltage = lambda sim: [v for d, m, v, _ in sim.samples_at(MOMENTS[0]) if m == "voltage"]
     assert voltage(base) != voltage(other)
 
 
-def test_values_do_not_depend_on_the_system_clock(sim_config, monkeypatch):
+def test_values_do_not_depend_on_the_system_clock(make_sim, monkeypatch):
     import time
 
-    before = snapshot(Simulator(sim_config), MOMENTS[:2])
+    before = snapshot(make_sim(), MOMENTS[:2])
     monkeypatch.setattr(time, "time", lambda: 0.0)
-    assert snapshot(Simulator(sim_config), MOMENTS[:2]) == before
+    assert snapshot(make_sim(), MOMENTS[:2]) == before

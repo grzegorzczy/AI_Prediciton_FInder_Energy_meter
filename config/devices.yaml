@@ -79,7 +79,7 @@ simulator:
   site: zaklad1
   line: linia2                 # K0-D3: zaklad1/linia1 = prawdziwy sprzęt, zaklad1/linia2 = symulator
   poll_interval_s: 1.0         # okres próbek na żywo; trafia do devices.meta (widoki energii); symulator wymaga 1.0
-  t_zero: null                 # U-2/K1-U2: data „teraz” dla degradacji i kotwicy liczników (k7); bez niej live/historia nie startują
+  meter_anchor: null           # K2R-D1: kotwica liczników energii (stan = energy_start_wh); w k7 = wdrożenie − 14 dni, potem stała
   seed: 20261126               # ziarno szumu: zmiana = inne, ale powtarzalne dane
   calendar:                    # S2; czas lokalny z czasem letnim
     timezone: Europe/Warsaw
@@ -94,7 +94,7 @@ simulator:
   ambient: { mean_c: 20, swing_c: 3, warmest_hour: 15 }      # temperatura otoczenia (chłodnia, łożysko pompy)
   electrical: { voltage_v: 230, voltage_slow_v: 2.0, voltage_noise_v: 0.3 }
   history: { meter_days: 14, pump_step_s: 60 }               # K0-D1: liczniki 1 s × 14 dni, pompa co 1 min (k5)
-  degradation: { days_total: 120, history_progress: 0.70, shape_k: 3.0 }   # K0-D2: historia pompy 84 dni
+  degradation: { days_total: 120, shape_k: 3.0 }   # od montażu łożyska (x = 0) do końca krzywej (x = 1)
   devices:
     # thermostat: w fazie wyłączonej grzałki obowiązuje p_idle_kw (pompy obiegowe i sterowanie pracują, K2-U6)
     - id: sim_pasteryzator
@@ -104,7 +104,7 @@ simulator:
       phases: 3
       rated_kw: 18
       energy_resolution_wh: 100
-      energy_start_wh: 1250000     # stan licznika w kotwicy t_zero − history.meter_days
+      energy_start_wh: 1250000     # stan licznika w chwili meter_anchor
       model: { type: thermostat, schedule: shifts, cycle_s: 60, on_fraction: 0.65, p_on_kw: 18, p_idle_kw: 2.5,
                p_off_kw: 0.15, pf_run: 0.98, pf_idle: 0.90, pf_off: 0.90 }
     - id: sim_chlodnia
@@ -143,6 +143,7 @@ simulator:
       kind: pump
       source: sim
       rated_kw: 11
+      bearing_installed_at: null   # K2R-D1: montaż łożyska (x = 0); w k7 = wdrożenie − 84 dni (x = 0,70); wymiana = nowa data
       model: { type: pump, schedule: shifts, speed_rpm: 2950, flow_m3_h: 40, current_a: 21,
                vibration_good_mm_s: 1.1, vibration_end_mm_s: 7.0, bearing_good_c: 52, bearing_end_c: 78,
                warmup_tau_min: 25, cooldown_tau_min: 40 }

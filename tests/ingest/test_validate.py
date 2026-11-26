@@ -152,10 +152,11 @@ def test_source_must_match_the_device(config):
     assert reason(result) == "source" and "różne" in result.detail
 
 
-def test_simulated_device_accepts_sim_and_rejects_real(make_config):
-    config = make_config(lambda raw: raw["devices"][0].update(source="sim"))
-    assert isinstance(run(payload=make_payload(source="sim"), config=config), Row)
-    assert reason(run(payload=make_payload(source="real"), config=config)) == "source"
+def test_simulated_device_accepts_sim_and_rejects_real(config):
+    """K1-D1: urządzenie sim tylko z sekcji `simulator` (linia2); ładunek `real` dla niego jest odrzucany."""
+    topic = "zaklad1/linia2/sim_pakowaczka/active_power"
+    assert isinstance(run(topic=topic, payload=make_payload(source="sim", unit="W"), config=config), Row)
+    assert reason(run(topic=topic, payload=make_payload(source="real", unit="W"), config=config)) == "source"
 
 
 def test_order_of_checks_topic_before_payload(config):

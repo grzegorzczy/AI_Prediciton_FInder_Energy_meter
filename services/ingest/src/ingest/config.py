@@ -90,6 +90,7 @@ def load_config_dict(raw: dict) -> IngestConfig:
 
     plc = _need(raw, "plc", "główna")
     plc_id = str(_need(plc, "id", "plc"))
+    _real_only(plc.get("source", "real"), "plc")
     add(DeviceSpec(
         device_id=plc_id, name=str(plc.get("name", plc_id)), kind="plc", source=str(plc.get("source", "real")),
         meta={"map_versions": [int(v) for v in _need(plc, "map_versions", "plc")]},        # bez adresu IP
@@ -99,6 +100,7 @@ def load_config_dict(raw: dict) -> IngestConfig:
     profiles = raw.get("profiles") or {}
     for dev in _need(raw, "devices", "główna"):
         dev_id = str(_need(dev, "id", "devices"))
+        _real_only(_need(dev, "source", f"devices.{dev_id}"), f"devices.{dev_id}")
         profile_name = str(_need(dev, "profile", f"devices.{dev_id}"))
         meta = {"profile": profile_name,
                 "block_base": int(_need(dev, "block_base", f"devices.{dev_id}")),
@@ -121,6 +123,12 @@ def load_config_dict(raw: dict) -> IngestConfig:
         ))
     _add_simulator(raw.get("simulator"), add, (site, line))
     return IngestConfig(site=site, line=line, devices=devices)
+
+
+def _real_only(source: Any, where: str) -> None:
+    """K1-D1 (E3-k3): w sekcji głównej (PLC i `devices`) tylko prawdziwy sprzęt."""
+    if source != "real":
+        raise ConfigError(f"{where}: source={source!r}; sekcja główna configu to prawdziwy sprzęt: dozwolone tylko source: real; urządzenia sim tylko w sekcji simulator")
 
 
 def _phases(value: Any, where: str) -> int:

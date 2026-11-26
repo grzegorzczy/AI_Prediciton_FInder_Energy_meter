@@ -198,18 +198,17 @@ def test_non_finite_values_are_skipped_and_reported(config, clock):
     assert got[("finder_7m24_1", "frequency")] == 50.02
 
 
-def test_source_comes_from_configuration_not_from_code(make_config, clock):
-    """K3-U1: `source` urządzenia i PLC z devices.yaml; ten sam collector obsłuży np. PLC testowe jako sim."""
+def test_source_comes_from_configuration_and_only_real_is_accepted(make_config, config, clock):
+    """K3-U1: `source` z devices.yaml (nie z kodu); od E3-k3 (K1-D1) sekcja główna to tylko prawdziwy sprzęt."""
+    from collector.config import ConfigError
 
-    def simulated(raw):
-        raw["devices"][0]["source"] = "sim"
-        raw["plc"]["source"] = "sim"
-
-    config = make_config(simulated)
     evaluator = Evaluator(config, clock)
     evaluator.evaluate(image(config))
     result = evaluator.evaluate(image(config, heartbeat=2))
-    assert {r.source for r in result.readings} == {"sim"}
+    assert {r.source for r in result.readings} == {"real"}
+    for mutate in (lambda raw: raw["devices"][0].update(source="sim"), lambda raw: raw["plc"].update(source="sim")):
+        with pytest.raises(ConfigError, match="tylko source: real"):
+            make_config(mutate)
 
 
 def test_default_source_is_real(config, clock):

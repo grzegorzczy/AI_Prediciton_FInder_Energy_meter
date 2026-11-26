@@ -34,8 +34,10 @@ FRACTIONS = {"on_fraction", "swing", "ambient_gain"}         # ułamki: 0 < x < 
 POWER_FACTORS = {"pf_run", "pf_idle", "pf_off"}               # 0 < PF <= 1
 METER_KINDS = {"thermostat", "compressor", "batch", "continuous"}
 
-T_ZERO_MISSING = ("simulator.t_zero nie jest ustawione: tryb na żywo i historia nie wystartują; "
-                  "datę ustala wdrożenie (k7), np. t_zero: \"2026-12-01T00:00:00Z\"")
+ANCHOR_MISSING = ("simulator.meter_anchor nie jest ustawione: tryb na żywo i historia nie wystartują; "
+                  "kotwicę liczników ustala wdrożenie (k7): wdrożenie − history.meter_days, np. \"2026-11-17T00:00:00Z\"")
+BEARING_MISSING = ("{device}.bearing_installed_at nie jest ustawione: tryb na żywo i historia nie wystartują; "
+                   "datę montażu łożyska ustala wdrożenie (k7): wdrożenie − 84 dni (x = 0,70), np. \"2026-09-08T00:00:00Z\"")
 
 
 class ConfigError(Exception):
@@ -85,8 +87,7 @@ class History:
 
 @dataclass(frozen=True)
 class Degradation:
-    days_total: float
-    history_progress: float
+    days_total: float              # od montażu łożyska (x = 0) do końca krzywej (x = 1)
     shape_k: float
 
 
@@ -100,6 +101,7 @@ class SimDevice:
     energy_start_wh: float | None = None
     energy_resolution_wh: float | None = None
     phases: int | None = None
+    bearing_installed_at: datetime | None = None      # tylko pompa: montaż łożyska, x = 0 (K2R-D1)
 
 
 @dataclass(frozen=True)
@@ -107,7 +109,7 @@ class SimConfig:
     site: str
     line: str
     poll_interval_s: float
-    t_zero: datetime | None
+    meter_anchor: datetime | None      # kotwica liczników energii: stan = energy_start_wh (K2R-D1), stała po wdrożeniu
     seed: int
     calendar: Calendar
     ambient: Ambient
@@ -116,11 +118,16 @@ class SimConfig:
     degradation: Degradation
     devices: tuple[SimDevice, ...]
 
-    def require_t_zero(self) -> datetime:
-        """K1-U2: bez daty nie liczymy postępu degradacji ani kotwicy licznika (żadnego podstawiania „teraz”)."""
-        if self.t_zero is None:
-            raise ConfigError(T_ZERO_MISSING)
-        return self.t_zero
+    def require_meter_anchor(self) -> datetime:
+        """K1-U2 / K2R-D1: bez kotwicy nie liczymy liczników energii (żadnego podstawiania „teraz”)."""
+        if self.meter_anchor is None:
+            raise ConfigError(ANCHOR_MISSING)
+        return self.meter_anchor
+
+    def require_bearing_installed_at(self, device: "SimDevice") -> datetime:
+        if device.bearing_installed_at is None:
+            raise ConfigError(BEARING_MISSING.format(device=f"simulator.devices.{device.device_id}"))
+        return device.bearing_installed_at
 
     def device(self, device_id: str) -> SimDevice:
         for dev in self.devices:
@@ -168,7 +175,8 @@ def _hhmm(value: Any, where: str) -> int:
     return int(hours) * 60 + int(minutes)
 
 
-def _t_zero(value: Any) -> datetime | None:
+def _moment(value: Any, name: str) -> datetime | None:
+    """Data ISO 8601 ze strefą, pełna minuta; None = nieustawione (dozwolone w pliku do wdrożenia, k7)."""
     if value is None:
         return None
     if isinstance(value, datetime):            # YAML sam rozpoznaje znaczniki czasu
@@ -177,13 +185,13 @@ def _t_zero(value: Any) -> datetime | None:
         try:
             moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
-            raise ConfigError(f"simulator.t_zero={value!r} nie jest datą ISO 8601") from None
+            raise ConfigError(f"{name}={value!r} nie jest datą ISO 8601") from None
     else:
-        raise ConfigError(f"simulator.t_zero={value!r} nie jest datą ISO 8601")
+        raise ConfigError(f"{name}={value!r} nie jest datą ISO 8601")
     if moment.tzinfo is None or moment.utcoffset() is None:
-        raise ConfigError(f"simulator.t_zero={value!r} bez strefy czasowej (np. końcówka Z dla UTC)")
+        raise ConfigError(f"{name}={value!r} bez strefy czasowej (np. końcówka Z dla UTC)")
     if moment.microsecond or moment.second:
-        raise ConfigError(f"simulator.t_zero={value!r}: wymagana pełna minuta")
+        raise ConfigError(f"{name}={value!r}: wymagana pełna minuta")
     return moment
 
 
@@ -274,22 +282,27 @@ def _device(dev: Any, poll: float) -> SimDevice:
         raise ConfigError(f"{where}.model: vibration_end_mm_s musi być większe niż vibration_good_mm_s")
     if model_type == "pump" and params["bearing_end_c"] <= params["bearing_good_c"]:
         raise ConfigError(f"{where}.model: bearing_end_c musi być większe niż bearing_good_c")
-    _no_unknown(dev, {"id", "name", "kind", "source", "phases", "rated_kw", "energy_resolution_wh", "energy_start_wh", "model"}, where)
-    energy_start = resolution = phases = None
+    _no_unknown(dev, {"id", "name", "kind", "source", "phases", "rated_kw", "energy_resolution_wh", "energy_start_wh", "model",
+                      "bearing_installed_at"}, where)
+    energy_start = resolution = phases = bearing = None
+    if kind == "pump":
+        bearing = _moment(_need(dev, "bearing_installed_at", where), f"{where}.bearing_installed_at")
+    elif "bearing_installed_at" in dev:
+        raise ConfigError(f"{where}: bearing_installed_at dotyczy tylko pompy")
     if kind == "energy_meter":
         energy_start = _number(_need(dev, "energy_start_wh", where), where, "energy_start_wh", allow_zero=True)
         resolution = _number(_need(dev, "energy_resolution_wh", where), where, "energy_resolution_wh")
         phases = dev.get("phases")
         if type(phases) is not int or phases not in (1, 3):
             raise ConfigError(f"{where}: phases={phases!r}, dozwolone 1 lub 3")
-    return SimDevice(dev_id, kind, model_type, schedule, params, energy_start, resolution, phases)
+    return SimDevice(dev_id, kind, model_type, schedule, params, energy_start, resolution, phases, bearing)
 
 
 def load_config_dict(raw: dict) -> SimConfig:
     section = _need(raw, "simulator", "główna")
     if not isinstance(section, dict):
         raise ConfigError("simulator: oczekiwano słownika")
-    _no_unknown(section, {"site", "line", "poll_interval_s", "t_zero", "seed", "calendar", "ambient", "electrical", "history",
+    _no_unknown(section, {"site", "line", "poll_interval_s", "meter_anchor", "seed", "calendar", "ambient", "electrical", "history",
                           "degradation", "devices"}, "simulator")
     site, line = str(_need(section, "site", "simulator")), str(_need(section, "line", "simulator"))
     for label, value in (("site", site), ("line", line)):
@@ -318,15 +331,16 @@ def load_config_dict(raw: dict) -> SimConfig:
     history = History(_int(_need(hist, "meter_days", "simulator.history"), "simulator.history", "meter_days"),
                       _int(_need(hist, "pump_step_s", "simulator.history"), "simulator.history", "pump_step_s"))
     deg = _need(section, "degradation", "simulator")
+    _no_unknown(deg, {"days_total", "shape_k"}, "simulator.degradation")
     degradation = Degradation(*(_number(_need(deg, k, "simulator.degradation"), "simulator.degradation", k)
-                                for k in ("days_total", "history_progress", "shape_k")))
-    if degradation.history_progress >= 1:
-        raise ConfigError("simulator.degradation: history_progress musi być < 1")
+                                for k in ("days_total", "shape_k")))
     devices = tuple(_device(dev, poll) for dev in (_need(section, "devices", "simulator") or []))
     ids = [d.device_id for d in devices]
     if len(ids) != len(set(ids)):
         raise ConfigError("simulator.devices: powtórzone id")
-    return SimConfig(site, line, poll, _t_zero(section.get("t_zero")), seed, _calendar(_need(section, "calendar", "simulator")),
+    if "meter_anchor" not in section:
+        raise ConfigError("brak pola 'meter_anchor' w sekcji simulator (null do wdrożenia, k7)")
+    return SimConfig(site, line, poll, _moment(section["meter_anchor"], "simulator.meter_anchor"), seed, _calendar(_need(section, "calendar", "simulator")),
                      ambient, electrical, history, degradation, devices)
 
 

@@ -109,9 +109,11 @@ def test_both_services_agree_on_the_same_file():
         (lambda r: r.update(site="strefa 1"), "ASCII"),
         (lambda r: r["devices"][0].update(id="plc-01"), "powtórzone id"),
         (lambda r: r["devices"][0].update(kind="inny"), "rodzaj"),
-        (lambda r: r["devices"][0].update(source="x"), "real lub sim"),
+        (lambda r: r["devices"][0].update(source="x"), "tylko source: real"),
+        (lambda r: r["devices"][0].update(source="sim"), "tylko source: real"),          # K1-D1
+        (lambda r: r["plc"].update(source="sim"), "tylko source: real"),
         (lambda r: r["devices"][0].pop("serial"), "serial"),
-        (lambda r: r["plc"].update(source="x"), "real lub sim"),
+        (lambda r: r["plc"].update(source="x"), "tylko source: real"),
         (lambda r: r.pop("plc"), "plc"),
     ],
 )

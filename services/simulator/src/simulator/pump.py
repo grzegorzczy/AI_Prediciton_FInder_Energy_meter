@@ -1,8 +1,9 @@
 """Pompa (model `pump`): degradacja łożyska (S5, S6, K0-D2) i wielkości procesowe.
 
-Postęp x(t) = (t − t_start) / D, gdzie t_start = t_zero − history_progress · D, czyli x(t_zero) = history_progress (0,70).
-Po końcu krzywej (x > 1) wartości zostają jak dla x = 1, a w logu pojawia się raz WARNING (K2-U1); „wymiana łożyska”
-to nowe t_zero przy wdrożeniu i okno `sim_reset` w `data_windows`.
+Postęp x(t) = (t − montaż łożyska) / D (K2R-D1): x = 0 w chwili `bearing_installed_at`; przy wdrożeniu montaż = wdrożenie
+− 84 dni, więc „teraz” x = 0,70 (K0-D2). Po końcu krzywej (x > 1) wartości zostają jak dla x = 1, a w logu pojawia się raz
+WARNING (K2-U1). Wymiana łożyska = nowa `bearing_installed_at` (x = 0) i okno `sim_reset` w `data_windows`; liczniki energii
+nietknięte, historii nie wgrywamy ponownie (K2R-D2).
 Krzywa przyspieszająca f(x) = (e^{kx} − 1) / (e^k − 1). Drgania RMS = v_dobry + (v_koniec − v_dobry) · f(x) – v_koniec to
 koniec zakresu modelu, nie próg alarmowy (progi: etap 5).
 Pompa pracuje przez całą zmianę, także w przerwach (cyrkulacja procesowa), a stoi poza zmianami (K2-U4). Prąd silnika
@@ -38,7 +39,7 @@ class PumpModel:
         self.key = device.device_id
         deg = config.degradation
         self.duration = deg.days_total * DAY
-        self.t_start = config.require_t_zero().timestamp() - deg.history_progress * self.duration
+        self.t_start = config.require_bearing_installed_at(device).timestamp()
         self.k = deg.shape_k
         self._warned_end = False
 
@@ -48,7 +49,7 @@ class PumpModel:
         if x > 1.0:
             if not self._warned_end:
                 LOG.warning("pompa %s: koniec krzywej degradacji (x = %.3f > 1); wartości jak dla x = 1, "
-                            "„wymiana łożyska” = nowe t_zero przy wdrożeniu", self.key, x)
+                            "wymiana łożyska = nowa bearing_installed_at", self.key, x)
                 self._warned_end = True
             return 1.0
         return max(0.0, x)

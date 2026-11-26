@@ -231,6 +231,8 @@ def load_config_dict(raw: dict) -> Config:
     )
     if plc.source not in SOURCES:
         raise ConfigError(f"plc.source='{plc.source}': dozwolone real lub sim")
+    if plc.source != "real":                          # K1-D1 (E3-k3): collector czyta tylko prawdziwy sprzęt
+        raise ConfigError(f"plc.source='{plc.source}': sekcja główna configu to prawdziwy sprzęt: dozwolone tylko source: real; urządzenia sim tylko w sekcji simulator")
     if not SEGMENT.match(plc.device_id) or not METRIC.match(plc.link_metric):
         raise ConfigError("plc.id lub plc.link_metric zawiera niedozwolone znaki")
     if plc.poll_interval_s <= 0 or plc.timeout_s <= 0:
@@ -262,6 +264,8 @@ def load_config_dict(raw: dict) -> Config:
         source = str(_require(dev, "source", f"devices.{dev_id}"))
         if source not in SOURCES:
             raise ConfigError(f"devices.{dev_id}.source='{source}': dozwolone real lub sim")
+        if source != "real":
+            raise ConfigError(f"devices.{dev_id}.source='{source}': sekcja główna configu to prawdziwy sprzęt: dozwolone tylko source: real; urządzenia sim tylko w sekcji simulator")
         profile = profiles[profile_name]
         newest = max(plc.map_versions)
         for label, since in _since_by_field(profile):

@@ -8,7 +8,7 @@ import pytest
 from sim_support import epoch
 from simulator.samples import Simulator
 
-ANCHOR = epoch(2026, 11, 17)          # t_zero (01.12.2026 00:00 UTC) − 14 dni
+ANCHOR = epoch(2026, 11, 17)          # meter_anchor testów (wdrożenie 01.12.2026 − 14 dni)
 
 
 def counter(simulator, dev_id="sim_pakowaczka"):

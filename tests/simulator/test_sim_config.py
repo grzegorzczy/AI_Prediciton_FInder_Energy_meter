@@ -1,4 +1,4 @@
-"""Sekcja `simulator` w config/devices.yaml (E3-k2): wczytanie, walidacja parametrów, t_zero (K1-U2), zgodność z ingestem."""
+"""Sekcja `simulator` w config/devices.yaml: wczytanie, walidacja parametrów, daty (K1-U2, K2R-D1), zgodność z ingestem."""
 from __future__ import annotations
 
 import math
@@ -6,20 +6,21 @@ import math
 import pytest
 
 from dbtools import REPO
-from simulator.config import T_ZERO_MISSING, ConfigError, load_config, load_config_dict
+from simulator.config import ANCHOR_MISSING, ConfigError, load_config, load_config_dict
 from simulator.samples import Simulator
 
 SIM_IDS = ["sim_pasteryzator", "sim_chlodnia", "sim_mieszalnik", "sim_pakowaczka", "sim_pump_p101"]
 
 
-def test_real_file_loads_with_five_devices_and_no_t_zero():
+def test_real_file_loads_with_five_devices_and_no_dates():
     config = load_config(REPO / "config" / "devices.yaml")
     assert [d.device_id for d in config.devices] == SIM_IDS
     assert [d.model_type for d in config.devices] == ["thermostat", "compressor", "batch", "continuous", "pump"]
-    assert config.t_zero is None and config.seed == 20261126 and (config.site, config.line) == ("zaklad1", "linia2")
+    assert config.meter_anchor is None and config.device("sim_pump_p101").bearing_installed_at is None
+    assert config.seed == 20261126 and (config.site, config.line) == ("zaklad1", "linia2")
     assert str(config.calendar.timezone) == "Europe/Warsaw"
     assert (config.history.meter_days, config.history.pump_step_s) == (14, 60)
-    assert (config.degradation.days_total, config.degradation.history_progress, config.degradation.shape_k) == (120, 0.70, 3.0)
+    assert (config.degradation.days_total, config.degradation.shape_k) == (120, 3.0)
     meters = [d for d in config.devices if d.kind == "energy_meter"]
     assert all(d.phases == 3 and d.energy_resolution_wh == 100 for d in meters)
     assert [d.energy_start_wh for d in meters] == [1250000, 2480000, 610000, 390000]
@@ -28,14 +29,17 @@ def test_real_file_loads_with_five_devices_and_no_t_zero():
     assert (pump.params["warmup_tau_min"], pump.params["cooldown_tau_min"]) == (25, 40)
 
 
-def test_missing_t_zero_stops_the_simulator_with_a_clear_message():
-    """K1-U2: przy t_zero: null nic nie podstawia „teraz”; tryb na żywo i historia nie wystartują."""
+def test_missing_dates_stop_the_simulator_with_a_clear_message(make_raw):
+    """K1-U2 / K2R-D1: przy null nic nie podstawia „teraz”; tryb na żywo i historia nie wystartują."""
     config = load_config(REPO / "config" / "devices.yaml")
     with pytest.raises(ConfigError) as error:
-        config.require_t_zero()
-    assert str(error.value) == T_ZERO_MISSING and "k7" in str(error.value)
-    with pytest.raises(ConfigError):
+        config.require_meter_anchor()
+    assert str(error.value) == ANCHOR_MISSING and "k7" in str(error.value)
+    with pytest.raises(ConfigError, match="meter_anchor"):
         Simulator(config)
+    only_anchor = load_config_dict(make_raw(bearing=None))
+    with pytest.raises(ConfigError, match="bearing_installed_at nie jest ustawione"):
+        Simulator(only_anchor)
 
 
 @pytest.mark.parametrize("value, fragment", [
@@ -45,14 +49,26 @@ def test_missing_t_zero_stops_the_simulator_with_a_clear_message():
     ("2026-12-01T00:00:30Z", "pełna minuta"),
     (12345, "ISO 8601"),
 ])
-def test_bad_t_zero_is_rejected(make_raw, value, fragment):
+def test_bad_dates_are_rejected(make_raw, value, fragment):
     with pytest.raises(ConfigError, match=fragment):
-        load_config_dict(make_raw(t_zero=value))
+        load_config_dict(make_raw(meter_anchor=value))
+    with pytest.raises(ConfigError, match=fragment):
+        load_config_dict(make_raw(bearing=value))
 
 
-def test_t_zero_with_offset_is_accepted(make_raw):
-    config = load_config_dict(make_raw(t_zero="2026-12-01T01:00:00+01:00"))
-    assert config.require_t_zero().timestamp() == load_config_dict(make_raw()).require_t_zero().timestamp()
+def test_date_with_offset_is_accepted(make_raw):
+    config = load_config_dict(make_raw(meter_anchor="2026-11-17T01:00:00+01:00"))
+    assert config.require_meter_anchor().timestamp() == load_config_dict(make_raw()).require_meter_anchor().timestamp()
+
+
+def test_t_zero_and_history_progress_are_gone(make_raw):
+    """K2R-D1: stare pola są błędem (literówka albo config sprzed k3), a nie cichym ignorowaniem."""
+    with pytest.raises(ConfigError, match="nieznane klucze"):
+        load_config_dict(make_raw(lambda r: r["simulator"].update(t_zero="2026-12-01T00:00:00Z")))
+    with pytest.raises(ConfigError, match="nieznane klucze"):
+        load_config_dict(make_raw(lambda r: r["simulator"]["degradation"].update(history_progress=0.7)))
+    with pytest.raises(ConfigError, match="tylko pompy"):
+        load_config_dict(make_raw(lambda r: r["simulator"]["devices"][0].update(bearing_installed_at="2026-09-08T00:00:00Z")))
 
 
 def dev(raw, index):
@@ -84,7 +100,6 @@ def dev(raw, index):
     (lambda r: r["simulator"]["calendar"].update(holidays=["31.12.2026"]), "YYYY-MM-DD"),
     (lambda r: r["simulator"].update(poll_interval_s=2.0), "1.0"),
     (lambda r: r["simulator"].pop("seed"), "seed"),
-    (lambda r: r["simulator"]["degradation"].update(history_progress=1.0), "history_progress"),
     (lambda r: r["simulator"]["history"].update(meter_days=0), "meter_days"),
     (lambda r: r["simulator"]["devices"].append(dict(r["simulator"]["devices"][0])), "powtórzone id"),
     # przegląd k2, ustalenie 4

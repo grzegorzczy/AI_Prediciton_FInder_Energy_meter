@@ -154,9 +154,68 @@ def test_config_requires_password_and_persistence():
 
 
 def test_acl_template_grants_only_minimal_rights():
+    """K1-D2 (E3-k3): każde konto pisze tylko do swojej linii; ingest czyta wszystko."""
     text = (REPO / "config" / "mosquitto" / "acl.conf").read_text(encoding="utf-8")
     rules = [line.split() for line in text.splitlines() if line.strip() and not line.startswith("#")]
     assert rules == [
-        ["user", "__COLLECTOR_USER__"], ["topic", "write", "+/+/+/+"],
+        ["user", "__COLLECTOR_USER__"], ["topic", "write", "zaklad1/linia1/+/+"],
+        ["user", "__SIM_USER__"], ["topic", "write", "zaklad1/linia2/+/+"],
         ["user", "__INGEST_USER__"], ["topic", "read", "+/+/+/+"],
     ]
+
+
+def test_acl_lines_match_devices_yaml():
+    """Literały zakładu i linii w ACL są te same co w config/devices.yaml (sprzęt i symulator)."""
+    import yaml
+
+    cfg = yaml.safe_load((REPO / "config" / "devices.yaml").read_text(encoding="utf-8"))
+    text = (REPO / "config" / "mosquitto" / "acl.conf").read_text(encoding="utf-8")
+    assert f"topic write {cfg['site']}/{cfg['line']}/+/+" in text
+    assert f"topic write {cfg['simulator']['site']}/{cfg['simulator']['line']}/+/+" in text
+
+
+SIM_TOPIC = "zaklad1/linia2/sim_pasteryzator/active_power"
+
+
+@pytest.fixture
+def simulator_account(probes):
+    probe = probes(os.environ["MQTT_SIM_USER"], os.environ["MQTT_SIM_PASSWORD"])
+    assert not probe.connect().is_failure
+    return probe
+
+
+def test_collector_writes_only_its_line(collector):
+    assert not collector.publish(TOPIC).is_failure
+    assert collector.publish(SIM_TOPIC).is_failure, "collector nie może pisać do linii symulatora"
+
+
+def test_simulator_writes_only_its_line_and_ingest_receives(simulator_account, ingest):
+    assert not ingest.subscribe("+/+/+/+").is_failure
+    payload = json.dumps({"ts": "2026-11-30T09:00:00.000Z", "value": 11702.0, "unit": "W", "source": "sim"})
+    assert not simulator_account.publish(SIM_TOPIC, payload).is_failure
+    assert ingest.wait_message(), "ingest nie dostał wiadomości symulatora"
+    assert ingest.messages[0][0] == SIM_TOPIC
+    assert simulator_account.publish(TOPIC).is_failure, "symulator nie może pisać do linii sprzętu"
+    assert simulator_account.publish("zaklad2/linia2/sim_pasteryzator/active_power").is_failure
+
+
+def test_simulator_never_receives_data(simulator_account, collector, ingest):
+    simulator_account.subscribe("#")
+    ingest.subscribe("+/+/+/+")
+    assert not collector.publish(TOPIC, "{}").is_failure
+    assert ingest.wait_message()
+    assert not simulator_account.wait_message(), "symulator nie może niczego czytać"
+
+
+def test_broker_config_does_not_queue_qos0_for_offline_sessions():
+    """K3-D4: dane sim (QoS 0) nie zajmują kolejki sesji ingestu; domyślnie queue_qos0_messages = false."""
+    text = (REPO / "config" / "mosquitto" / "mosquitto.conf").read_text(encoding="utf-8")
+    assert "queue_qos0_messages true" not in text
+
+
+def test_entrypoint_makes_the_simulator_account_optional():
+    """K3-D1: bez zmiennych konta symulatora broker startuje (WARNING), a blok ACL dostaje nieistniejące konto."""
+    text = (REPO / "config" / "mosquitto" / "entrypoint.sh").read_text(encoding="utf-8")
+    required = text[text.index("for v in"):text.index("done")]
+    assert "MQTT_SIM" not in required
+    assert "WARNING: brak konta symulatora" in text and "__brak_konta_symulatora__" in text

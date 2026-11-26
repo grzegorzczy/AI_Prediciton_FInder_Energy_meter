@@ -90,6 +90,8 @@ services:
       MQTT_COLLECTOR_PASSWORD: ${TEST_MQTT_COLLECTOR_PASSWORD:?uzyj tests/run-tests.sh}
       MQTT_INGEST_USER: ingest
       MQTT_INGEST_PASSWORD: ${TEST_MQTT_INGEST_PASSWORD:?uzyj tests/run-tests.sh}
+      MQTT_SIM_USER: simulator
+      MQTT_SIM_PASSWORD: ${TEST_MQTT_SIM_PASSWORD:?uzyj tests/run-tests.sh}
     volumes:
       - ./config/mosquitto:/mosquitto/config:ro
     tmpfs:
@@ -129,6 +131,8 @@ services:
       MQTT_COLLECTOR_PASSWORD: ${TEST_MQTT_COLLECTOR_PASSWORD:?uzyj tests/run-tests.sh}
       MQTT_INGEST_USER: ingest
       MQTT_INGEST_PASSWORD: ${TEST_MQTT_INGEST_PASSWORD:?uzyj tests/run-tests.sh}
+      MQTT_SIM_USER: simulator
+      MQTT_SIM_PASSWORD: ${TEST_MQTT_SIM_PASSWORD:?uzyj tests/run-tests.sh}
     volumes:                       # tylko to, czego testy potrzebują (bez .env)
       - ./config:/repo/config:ro
       - ./db:/repo/db:ro

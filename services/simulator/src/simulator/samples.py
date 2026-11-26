@@ -5,6 +5,7 @@ from datetime import datetime
 
 from .calendar import CalendarModel
 from .config import SimConfig
+from .daycache import DayCache, cache_key
 from .energy import EnergyCounter
 from .meters import MeterModel
 from .pump import PumpModel
@@ -17,18 +18,30 @@ PUMP_METRICS = (("vibration_rms", "mm/s"), ("bearing_temperature", "°C"), ("mot
 
 
 class Simulator:
-    def __init__(self, config: SimConfig) -> None:
-        config.require_t_zero()                          # K1-U2: bez daty nie liczymy niczego
+    def __init__(self, config: SimConfig, cache_path: str | None = None) -> None:
+        config.require_meter_anchor()                    # K1-U2 / K2R-D1: bez dat nie liczymy niczego
+        for dev in config.devices:
+            if dev.kind == "pump":
+                config.require_bearing_installed_at(dev)
         self.config = config
         self.calendar = CalendarModel(config.calendar, config.ambient)
+        self.cache = DayCache(cache_path, cache_key(config))
         self.meters: dict[str, tuple[MeterModel, EnergyCounter]] = {}
         self.pumps: dict[str, PumpModel] = {}
         for dev in config.devices:
             if dev.kind == "energy_meter":
                 meter = MeterModel(config, dev, self.calendar)
-                self.meters[dev.device_id] = (meter, EnergyCounter(meter))
+                self.meters[dev.device_id] = (meter, EnergyCounter(meter, self.cache))
             else:
                 self.pumps[dev.device_id] = PumpModel(config, dev, self.calendar)
+        # K2R-D3: ostatnia zapisana doba każdego licznika przeliczona od zera; niezgodność = plik odrzucony
+        self.cache.verify(lambda device, day: self.meters[device][1].compute_day(day) if device in self.meters else None)
+
+    def prime(self, t: int) -> None:
+        """Start liczników energii w chwili t (sumy dób z pliku albo liczone) i zapis pamięci sum."""
+        for _, counter in self.meters.values():
+            counter.value_wh(t)
+        self.cache.flush()
 
     @staticmethod
     def _seconds(t: int | datetime) -> int:

@@ -342,6 +342,8 @@ Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje prz
 | --- | --- | --- | --- |
 | broker MQTT niedostępny | bufor w pamięci collectora (`COLLECTOR_BUFFER_MAX` = 30 000) | ok. 25 minut przy 20 wiadomościach na sekundę (mapa v2; 38 minut przy 13 na sekundę, mapa v1) | **najstarsze** wiadomości (luka na początku przerwy) |
 | ingest lub baza niedostępne | kolejka sesji ingestu w Mosquitto (`max_queued_messages` 80 000, `max_queued_bytes` 20 MB) | ok. 66 minut przy 20 wiadomościach na sekundę (mapa v2; 102 minuty przy 13 na sekundę; wiąże liczba wiadomości) | **najnowsze** wiadomości (luka na końcu przerwy) |
+| ingest lub baza niedostępne – **dane symulatora** (od etapu 3, E3-k3) | nic: symulator publikuje z QoS 0, a Mosquitto nie kolejkuje QoS 0 dla rozłączonej sesji (`queue_qos0_messages` domyślnie false, K3-D4) | – | dane sim z czasu przerwy (luka); uzupełnia je historia symulatora (k5), bo wartości są funkcją czasu. Dzięki temu kolejka 80 000 zostaje w całości dla danych prawdziwych: **nadal ok. 66 minut przy 20 wiadomościach na sekundę**, mimo że razem z symulatorem jest ich 49 na sekundę (przy QoS 1 dla sim byłoby ok. 27 minut, test `tests/simulator/test_sim_e2e.py`) |
+| broker MQTT niedostępny – **symulator** | bufor w pamięci symulatora (`SIM_BUFFER_MAX` = 36 000) | ok. 20 minut przy 29 wiadomościach na sekundę | **najstarsze** wiadomości symulatora |
 | ingest nie łączy się z brokerem dłużej niż 7 dni | `persistent_client_expiration 7d` w `mosquitto.conf` | 7 dni | broker usuwa sesję wraz z kolejką; od tej chwili wiadomości nie są kolejkowane, aż ingest znów się zasubskrybuje |
 
 **Pamięć Mosquitto przy pełnej kolejce:** po opublikowaniu 90 000 wiadomości QoS 1 do rozłączonej sesji trwałej (kolejka ucięta do 80 000) kontener `aip-mosquitto` zajmował
@@ -351,6 +353,37 @@ Ingest potwierdza wiadomość brokerowi dopiero po zapisie w bazie, więc awaria
 kolejki sesji, a ponowne dostarczenie nie tworzy duplikatów (`ON CONFLICT DO NOTHING`). Przy niedostępnej bazie do ingestu
 dociera najwyżej 100 niepotwierdzonych wiadomości (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze. Dla
 demo akceptowalne; przy dłuższych przerwach trzeba liczyć się z luką w danych.
+
+## Symulator (od etapu 3, E3-k3)
+
+Usługa `simulator` (kontener `aip-simulator`) publikuje dane urządzeń sim (`source = sim`) do `zaklad1/linia2` z QoS 0.
+Na produkcji startuje dopiero we wdrożeniu k7; do tego czasu `~/ai-predykcja` zostaje na commicie etapu 2.
+
+**Konto MQTT symulatora (K3-D1).** Opcjonalne dla brokera: bez `MQTT_SIM_USER`/`MQTT_SIM_PASSWORD` w `.env` Mosquitto startuje
+(WARNING w logu), dane prawdziwe płyną, a symulator ponawia połączenie i loguje błąd autoryzacji raz na epizod. Przed wdrożeniem
+k7 **Grzegorz** dopisuje konto (Claude Code nie widzi `.env`):
+
+```bash
+cd /home/jumo/ai-predykcja
+printf 'MQTT_SIM_USER=simulator\nMQTT_SIM_PASSWORD=%s\n' "$(openssl rand -hex 24)" >> .env
+chmod 600 .env
+grep -c '^MQTT_SIM_' .env          # 2
+```
+Tę samą parę linii przenosi do kopii `.env` na laptopie. Zmiana konta wymaga odtworzenia `mosquitto` i `simulator` (R-1).
+ACL (K1-D2): collector pisze tylko do `zaklad1/linia1/+/+`, symulator tylko do `zaklad1/linia2/+/+`, ingest czyta wszystko.
+
+**Daty w `config/devices.yaml` (K2R-D1), ustawiane we wdrożeniu k7:**
+- `simulator.meter_anchor` = wdrożenie − 14 dni (`history.meter_days`): kotwica liczników energii (stan = `energy_start_wh`),
+  **po wdrożeniu nigdy niezmieniana** (zmiana cofnęłaby liczniki, a widoki energii zobaczyłyby reset);
+- `bearing_installed_at` pompy = wdrożenie − 84 dni (postęp x = 0,70 „teraz”).
+  **Wymiana łożyska** = nowa `bearing_installed_at` (x = 0, drgania ok. 1,1 mm/s) i okno `sim_reset` w `data_windows`;
+  liczniki energii nietknięte, historii nie wgrywamy ponownie (K2R-D2).
+Bez tych dat symulator kończy się kodem 2 z komunikatem, co ustawić.
+
+**Pamięć sum dobowych (K2R-D3).** Plik `/var/lib/simulator/energy-days.json` w wolumenie `aip_simulator_data` (jedyne miejsce
+zapisu, kontener `read_only`): sumy W·s każdej doby od kotwicy dla czterech liczników. Przyspiesza start (bez pliku liczniki
+przeliczają wszystkie doby od kotwicy: minuty po kilku miesiącach). Plik można w każdej chwili usunąć – symulator go odtworzy;
+przy niezgodności z modelem (klucz z `MODEL_VERSION` i parametrami, kontrola ostatniej doby) jest odrzucany automatycznie.
 
 ## Źródła pobierania (przygotowanie instalacji offline, etap 7)
 

@@ -133,7 +133,9 @@ def test_metric_names_match_database_constraint(cfg):
 def test_simulator_section_identity_and_metadata(cfg):
     sim = cfg["simulator"]
     assert sim["site"] == cfg["site"] and sim["line"] == "linia2" and sim["line"] != cfg["line"]       # K0-D3
-    assert SEGMENT.match(sim["line"]) and sim["poll_interval_s"] == 1.0 and sim["t_zero"] is None   # t_zero w k7 (U-2)
+    assert SEGMENT.match(sim["line"]) and sim["poll_interval_s"] == 1.0
+    assert sim["meter_anchor"] is None and "t_zero" not in sim                                  # K2R-D1: daty w k7
+    assert [d.get("bearing_installed_at", "brak") for d in sim["devices"]] == ["brak"] * 4 + [None]
     devices = sim["devices"]
     assert [d["id"] for d in devices] == ["sim_pasteryzator", "sim_chlodnia", "sim_mieszalnik", "sim_pakowaczka", "sim_pump_p101"]
     for dev in devices:

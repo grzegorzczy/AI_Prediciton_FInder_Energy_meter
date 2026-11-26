@@ -43,8 +43,9 @@ def test_plc_status_topic():
     assert json.loads(payload)["unit"] == ""
 
 
-def test_source_sim_from_configuration_reaches_payload(make_config, clock):
-    config = make_config(lambda raw: raw["devices"][0].update(source="sim"))
+def test_source_from_configuration_reaches_payload(make_config, clock):
+    """`source` z configu w ładunku (od E3-k3 sekcja główna ma tylko `real`, K1-D1)."""
+    config = make_config()
     evaluator = Evaluator(config, clock)
     words = lambda hb: Registers(0, build_image(heartbeat=hb)[:44])  # noqa: E731
     evaluator.evaluate(words(1))
@@ -53,7 +54,7 @@ def test_source_sim_from_configuration_reaches_payload(make_config, clock):
     assert meter_readings
     for reading in meter_readings:
         _, payload = build_message(config.site, config.line, reading, "t")
-        assert json.loads(payload)["source"] == "sim"
+        assert json.loads(payload)["source"] == "real"
     plc_reading = next(r for r in result.readings if r.device_id == "plc-01")
     assert json.loads(build_message(config.site, config.line, plc_reading, "t")[1])["source"] == "real"
 

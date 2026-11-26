@@ -1,6 +1,6 @@
 """Licznik energii czynnej `energy_import_wh` licznika wirtualnego.
 
-Stan licznika = `energy_start_wh` + Σ P(s) · 1 s / 3600 po pełnych sekundach od kotwicy (t_zero − history.meter_days)
+Stan licznika = `energy_start_wh` + Σ P(s) · 1 s / 3600 po pełnych sekundach od kotwicy `meter_anchor`
 do chwili t (bez niej), kwantowany w dół do `energy_resolution_wh`. P to ta sama, opublikowana (zaokrąglona) moc, więc
 całka z bazy i przyrost licznika różnią się najwyżej o rozdzielczość licznika. Licznik jest całką modelu: rośnie także
 wtedy, gdy próbek nie publikowano (jak prawdziwy licznik przy przerwie komunikacji).
@@ -17,14 +17,27 @@ DAY = 86400
 
 
 class EnergyCounter:
-    def __init__(self, meter: MeterModel) -> None:
+    def __init__(self, meter: MeterModel, cache=None) -> None:
         config, device = meter.config, meter.device
         self.meter = meter
-        self.anchor = int(config.require_t_zero().timestamp()) - config.history.meter_days * DAY
+        self.device_id = device.device_id
+        self.anchor = int(config.require_meter_anchor().timestamp())      # K2R-D1: stała kotwica, niezależna od pompy
         self.start_wh = float(device.energy_start_wh)
         self.resolution = float(device.energy_resolution_wh)
+        self.cache = cache                                    # DayCache (plik) albo None
         self._day_sums: dict[int, int] = {}                   # W·s na dobę od kotwicy
+        self._boundaries: dict[int, int] = {}                 # W·s od kotwicy do początku doby k (z odczytów po kolei)
         self._last: tuple[int, int] | None = None            # (t, W·s od kotwicy do t) – przyspieszenie odczytów po kolei
+
+    def compute_day(self, index: int) -> int:
+        """Suma W·s doby `index` liczona od zera (bez pamięci) – także do kontroli pliku przy starcie."""
+        start = self.anchor + index * DAY
+        return self._sum(start, start + DAY)
+
+    def _remember(self, index: int, value: int) -> None:
+        self._day_sums[index] = value
+        if self.cache is not None:
+            self.cache.put(self.device_id, index, value)
 
     def _sum(self, start: int, end: int) -> int:
         """Suma opublikowanej mocy [W·s] w sekundach [start, end) – liczby całkowite, bez błędu zaokrągleń."""
@@ -36,10 +49,24 @@ class EnergyCounter:
 
     def _day_sum(self, index: int) -> int:
         value = self._day_sums.get(index)
+        if value is None and self.cache is not None:
+            value = self.cache.get(self.device_id, index)
+            if value is not None:
+                self._day_sums[index] = value
         if value is None:
-            start = self.anchor + index * DAY
-            value = self._day_sums[index] = self._sum(start, start + DAY)
+            value = self.compute_day(index)
+            self._remember(index, value)
         return value
+
+    def _boundary(self, t: int, value: int) -> None:
+        """Na początku doby zapamiętuje całkę; z dwóch kolejnych początków powstaje suma doby bez liczenia od nowa."""
+        days, rest = divmod(t - self.anchor, DAY)
+        if rest:
+            return
+        self._boundaries[days] = value
+        previous = self._boundaries.get(days - 1)
+        if previous is not None and (days - 1) not in self._day_sums:
+            self._remember(days - 1, value - previous)
 
     def integral_ws(self, t: int) -> int:
         """Całka mocy [W·s] od kotwicy do chwili t (bez sekundy t)."""
@@ -50,7 +77,13 @@ class EnergyCounter:
             value = last[1] + self._sum(last[0], t)
         else:
             days, rest = divmod(t - self.anchor, DAY)
-            value = sum(self._day_sum(i) for i in range(days)) + self._sum(self.anchor + days * DAY, self.anchor + days * DAY + rest)
+            base = sum(self._day_sum(i) for i in range(days))
+            self._boundary(self.anchor + days * DAY, base)
+            value = base + self._sum(self.anchor + days * DAY, self.anchor + days * DAY + rest)
+        if last is not None and last[0] < t:
+            crossing = self.anchor + ((t - self.anchor) // DAY) * DAY     # początek doby t, jeśli przeszliśmy przez niego
+            if last[0] < crossing <= t:
+                self._boundary(crossing, last[1] + self._sum(last[0], crossing))
         self._last = (t, value)
         return value
 

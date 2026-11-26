@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from sim_support import T_ZERO, epoch, with_t_zero
+from sim_support import BEARING_INSTALLED, T_ZERO, epoch, with_dates
 from simulator.calendar import CalendarModel
 from simulator.pump import PumpModel, curve
 
@@ -19,9 +19,9 @@ WORK_HOUR = epoch(2026, 11, 30, 8, 0, 0, tz=WAW)     # poniedziałek 08:00-09:00
 
 
 def pump_for(config, x_at_work_hour: float) -> PumpModel:
-    """Pompa z t_zero dobranym tak, by w WORK_HOUR postęp wynosił x (te same chwile = ten sam szum)."""
-    t_zero = WORK_HOUR - round((x_at_work_hour - 0.7) * D)
-    config = with_t_zero(config, datetime.fromtimestamp(t_zero, timezone.utc))
+    """Pompa z datą montażu łożyska dobraną tak, by w WORK_HOUR postęp wynosił x (te same chwile = ten sam szum)."""
+    installed = WORK_HOUR - round(x_at_work_hour * D)
+    config = with_dates(config, bearing=datetime.fromtimestamp(installed, timezone.utc))
     return PumpModel(config, config.device("sim_pump_p101"), CalendarModel(config.calendar, config.ambient))
 
 
@@ -29,11 +29,23 @@ def hour_mean(pump, metric, start=WORK_HOUR, seconds=3600):
     return sum(pump.sample(t)[metric] for t in range(start, start + seconds)) / seconds
 
 
-def test_progress_is_0_70_at_t_zero(sim_config):
+def test_progress_is_zero_at_bearing_installation_and_0_70_after_84_days(sim_config):
+    """K2R-D1: x = 0 w chwili montażu łożyska; przy wdrożeniu (montaż + 84 dni) x = 0,70 jak w K0-D2."""
     pump = PumpModel(sim_config, sim_config.device("sim_pump_p101"), CalendarModel(sim_config.calendar, sim_config.ambient))
+    assert pump.progress(BEARING_INSTALLED.timestamp()) == 0.0
+    assert pump.progress(BEARING_INSTALLED.timestamp() - 86400) == 0.0
     assert pump.progress(T_ZERO.timestamp()) == pytest.approx(0.70)
-    assert pump.progress(T_ZERO.timestamp() - 0.70 * D) == pytest.approx(0.0)
-    assert pump.progress(T_ZERO.timestamp() - 0.70 * D - 86400) == 0.0
+
+
+def test_bearing_replacement_resets_the_pump_but_not_the_energy_counters(sim_config, make_sim):
+    """K2R-D2: nowa data montażu = x = 0 (drgania ok. 1,1 mm/s); liczniki energii bez zmian (osobna kotwica)."""
+    replaced = with_dates(sim_config, bearing=T_ZERO)
+    before, after = make_sim(), make_sim(replaced)
+    t = epoch(2026, 12, 1, 8, 30, 0, tz=WAW)
+    assert after.pumps["sim_pump_p101"].progress(t) < 0.005                     # 7,5 h po montażu
+    assert hour_mean(after.pumps["sim_pump_p101"], "vibration_rms", t, 600) == pytest.approx(1.1, rel=0.05)
+    energy = lambda sim: [v for d, m, v, _ in sim.samples_at(t) if m == "energy_import_wh"]  # noqa: E731
+    assert energy(before) == energy(after)
 
 
 @pytest.mark.parametrize("x", sorted(CONTROL))

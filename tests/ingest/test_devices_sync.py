@@ -81,16 +81,12 @@ def test_device_removed_from_config_is_disabled_and_restored_later(pg, migrated_
     assert devices(pg, migrated_db)["finder_7m24_1"][5] is True
 
 
-def test_changed_name_and_source_are_updated(pg, migrated_db, writer_store, make_config):
+def test_changed_name_is_updated(pg, migrated_db, writer_store, make_config):
+    """Zmiana nazwy w configu trafia do `devices`; zmiana źródła w sekcji głównej jest błędem configu (K1-D1)."""
     writer_store.sync_devices(make_config())
-
-    def rename(raw):
-        raw["devices"][0]["name"] = "Nowa nazwa"
-        raw["devices"][0]["source"] = "sim"
-
-    writer_store.sync_devices(make_config(rename))
+    writer_store.sync_devices(make_config(lambda raw: raw["devices"][0].update(name="Nowa nazwa")))
     name, _, _, _, source, _, _ = devices(pg, migrated_db)["finder_7m24_1"]
-    assert (name, source) == ("Nowa nazwa", "sim")
+    assert (name, source) == ("Nowa nazwa", "real")
 
 
 def test_sync_runs_as_the_writer_role(pg, migrated_db, writer_store, config):

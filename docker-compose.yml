@@ -23,6 +23,8 @@ services:
       MQTT_COLLECTOR_PASSWORD: ${MQTT_COLLECTOR_PASSWORD:?ustaw w .env}
       MQTT_INGEST_USER: ${MQTT_INGEST_USER:?ustaw w .env}
       MQTT_INGEST_PASSWORD: ${MQTT_INGEST_PASSWORD:?ustaw w .env}
+      MQTT_SIM_USER: ${MQTT_SIM_USER:-}            # konto symulatora OPCJONALNE (K3-D1): bez niego broker startuje
+      MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD:-}
     ports:
       - "127.0.0.1:1883:1883"   # tylko lokalnie (testy, tunel SSH); nie w LAN
     volumes:
@@ -204,6 +206,48 @@ services:
     logging: *default-logging
     networks: [backend]
 
+  simulator:
+    # Etap 3 (E3-k3): wirtualne liczniki i pompa -> MQTT, QoS 0, tylko linia symulatora (ACL). Bez dat w configu
+    # (simulator.meter_anchor, bearing_installed_at – ustawiane w k7) albo bez konta MQTT kończy się kodem 2 z komunikatem.
+    build:
+      context: ./services/simulator
+    image: aip-simulator:local
+    container_name: aip-simulator
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+      DEVICES_CONFIG: /config/devices.yaml
+      SIM_CACHE: /var/lib/simulator/energy-days.json     # pamięć sum dobowych liczników (K2R-D3), da się odtworzyć
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_USER: ${MQTT_SIM_USER:-}
+      MQTT_PASSWORD: ${MQTT_SIM_PASSWORD:-}
+      SIM_BUFFER_MAX: "36000"           # ok. 20 min przy 29 wiadomościach na sekundę (K3-D3)
+      LOG_LEVEL: INFO
+    volumes:
+      - ./config/devices.yaml:/config/devices.yaml:ro
+      - aip_simulator_data:/var/lib/simulator
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    memswap_limit: 128m
+    healthcheck:
+      # "pętla żyje", a nie "broker działa" (jak collector)
+      test: ["CMD", "python", "-m", "simulator.health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s               # start liczników energii (z pamięcią sum: sekundy; bez niej do kilku minut)
+    logging: *default-logging
+    networks: [backend]
+
   grafana:
     # Dashboardy jako kod (grafana/), źródło danych wyłącznie rolą app_reader (zasada 4). Port 3000 w LAN, HTTP bez TLS (G7-h).
     # Wersja z digestem: docs/ops. Sekrety tylko z .env; klucz GF_SECURITY_SECRET_KEY musi istnieć przed pierwszym startem wolumenu.
@@ -270,3 +314,5 @@ volumes:
     name: aip_mosquitto_data
   aip_grafana_data:
     name: aip_grafana_data
+  aip_simulator_data:
+    name: aip_simulator_data
