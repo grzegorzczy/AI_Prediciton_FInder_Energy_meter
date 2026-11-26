@@ -17,7 +17,7 @@ Polecenia wykonujesz z laptopa w cmd jako `ssh jumo@192.168.0.213 "<polecenie>"`
 | # | Krok (polecenie) | Oczekiwane | Stan |
 | --- | --- | --- | --- |
 | 1 | `docker compose -f ai-predykcja/docker-compose.yml ps` | `aip-mosquitto`, `aip-timescaledb`, `aip-ingest`, `aip-collector`, `aip-grafana` = Up (healthy); `aip-migrate` = Exited (0) | OK (25.11): 5 × Up (healthy); `ps` bez `-a` nie pokazuje zakończonego `aip-migrate` – zgodnie z oczekiwaniem |
-| 2 | `docker stats --no-stream` | każdy kontener poniżej swojego limitu (część B: pomiar po dobie, szczyt ≤ 80 % limitu) | część B |
+| 2 | `docker stats --no-stream` | każdy kontener poniżej swojego limitu (część B: pomiar po dobie, szczyt ≤ 80 % limitu) | OK wstępnie (26.11, 17 h 47 min): 0 OOM; szczyt Grafany 76,7 % (harness 25.11 13:12), w zwykłej pracy maks. 62,6 %; pełna doba – uzupełnienie po 13:00 |
 | 3 | `ss -ltn` | z nowych portów tylko 1883 (127.0.0.1) i 3000; 80/443 zajęte przez smartWARE; baza bez portu na hoście | OK (25.11): 1883 tylko 127.0.0.1, 3000; 5432 bez portu na hoście |
 | 4 | `psql … -c "SELECT version, name FROM schema_migrations ORDER BY 1"` | 11 wierszy (001–011) | OK (25.11): 11 migracji 001–011 |
 | 5 | `git ls-files \| findstr /i ".env"` w repo na laptopie | tylko `.env.example`; sekretów w repo brak | OK (25.11): tylko `.env.example` |
@@ -27,11 +27,11 @@ Polecenia wykonujesz z laptopa w cmd jako `ssh jumo@192.168.0.213 "<polecenie>"`
 | 9 | Dashboard „Energia”: zakres „Ostatnie 24 godziny” oraz kontrola dobowa | energia z agregatów zgodna z różnicą liczników (`energy_daily_check`) w granicach rozdzielczości licznika (0,1 kWh) | OK (25.11): 24.11 i 25.11 `within_resolution = t`; 23.11 – 17 min danych, bez kroku licznika |
 | 10 | `psql … -c "SELECT kind, start_time, end_time FROM data_windows ORDER BY start_time"` | 14 okien (w tym trzy `plc_program_download` i `ipc_reboot` z testu restartu) | OK (25.11): 14 okien |
 | 11 | Grafana, dashboard „Jakość”, zakres obejmujący 24.11 14:25 UTC (UTC+0; w Grafanie 15:25 czasu lokalnego) | adnotacja „Download programu PLC” widoczna na wykresie | OK (25.11): okno `plc_program_download` 14:25:03–14:25:20 UTC zwracane przez zapytanie adnotacji dashboardu |
-| 12 | Reguła „do PLC nie piszemy”: wynik testu `tests/collector/test_no_write.py` (w raporcie z pełnych testów) | wszystkie testy tego pliku zaliczone: interfejs klienta ma tylko `read_input_registers`, źródła bez funkcji zapisu, tylko FC04 | część B (pełne testy) |
-| 13 | Pełne testy: `ssh jumo@192.168.0.213 "cd ai-predykcja && sh tests/run-tests.sh </dev/null"` (ok. 10 min) | brak błędów; 3 testy wydajnościowe pominięte (osobno `tests/run-perf.sh`) | część B |
+| 12 | Reguła „do PLC nie piszemy”: wynik testu `tests/collector/test_no_write.py` (w raporcie z pełnych testów) | wszystkie testy tego pliku zaliczone: interfejs klienta ma tylko `read_input_registers`, źródła bez funkcji zapisu, tylko FC04 | OK (26.11): w pełnym zestawie 507 passed, 0 failed |
+| 13 | Pełne testy: `ssh jumo@192.168.0.213 "cd ai-predykcja && sh tests/run-tests.sh </dev/null"` (ok. 10 min) | brak błędów; 3 testy wydajnościowe pominięte (osobno `tests/run-perf.sh`) | OK (26.11): 507 passed, 3 skipped (wydajnościowe), 0 failed, 689,7 s |
 | 14 | **Restart komputera** (`sudo reboot`; wykonany 25.11.2026, wynik w `e2-k8a-report.md`, sekcja 10: luka 37 s, wszystko wstało samo) | wszystkie usługi wstają same, bez `docker compose up`; do pierwszego nowego punktu na wykresie < 5 min; `aip-migrate` nie biegnie ponownie | OK (25.11): luka 37 s, wszystko wstało samo |
-| 15 | Kompresja i rozmiar bazy (**część B**, po 26.11 00:00 UTC) | liczby B/wiersz, MB/dobę, prognoza 90 dni i roku agregatów w `e2-k8b-report.md` | część B |
-| 16 | Konto czatu/Grafany tylko do odczytu: `psql` jako `app_reader` odrzuca `INSERT` | błąd „permission denied” (test `tests/db/test_roles.py`) | część B (pełne testy) |
+| 15 | Kompresja i rozmiar bazy (**część B**, po 26.11 00:00 UTC) | liczby B/wiersz, MB/dobę, prognoza 90 dni i roku agregatów w `e2-k8b-report.md` | OK (26.11): chunk 24.11 – kompresja 43× (196,4 → 4,53 B/wiersz, mapa v1); prognoza ok. 7,8 MB/dobę, ok. 1,5 GB na 90 dni; pomiar v2 – 28.11 |
+| 16 | Konto czatu/Grafany tylko do odczytu: `psql` jako `app_reader` odrzuca `INSERT` | błąd „permission denied” (test `tests/db/test_roles.py`) | OK (26.11): w pełnym zestawie 507 passed, 0 failed |
 
 Polecenia checklisty wykonał Claude Code na decyzję Grzegorza (25.11.2026); wyniki ocenili Grzegorz i architekt na podstawie surowych wydruków w e2-checklista-wyniki.md.
 
@@ -53,7 +53,7 @@ Metryki mapy v2 (THD, kąt, PF, cos φ) liczone po restarcie bez zmian: PF ≈ 0
 ## Znane ograniczenia (nie blokują zamknięcia etapu 2)
 
 - **E2-PLC1:** błędy CRC na RS485 pojawiają się seriami; przyczyna fizyczna nieustalona, odłożone (nie wpływa na zgodność wartości; w bazie widoczne jako `meter_status ≠ 0`).
-  Fakty z 25.11.2026 (k8c): 36 epizodów `meter_status ≠ 0` od północy, **wszystkie przy mapie v1**, w trzech seriach co 128 s (00:24–00:49, jeden o 00:56 i 08:23–09:09 czasu lokalnego), każdy ok. 4 s, kody 162 (123 wiersze) i 161 (20 wierszy); po 09:10 lokalnie żadnego, **pod mapą v2 (od 11:43 lokalnie) zero**.
+  Fakty z 25.11.2026 (k8c): 36 epizodów `meter_status ≠ 0` od północy, **wszystkie przy mapie v1**, w trzech seriach co 128 s (00:24–00:49, jeden o 00:56 i 08:23–09:09 czasu lokalnego), każdy ok. 4 s, kody 162 (123 wiersze) i 161 (20 wierszy); po 09:10 lokalnie żadnego; pod mapą v2 do ok. 14:47 lokalnie zero. **Korekta 26.11 (e2-k8b-report.md):** od 25.11 14:41 UTC epizody wróciły także pod mapą v2 – 57 do rana 26.11 (14–17 UTC: 40, 22–24 UTC: 17), każdy ok. 5 s, odstępy wielokrotnością 64 s. Mapa v2 nie usuwa błędu; przyczyna fizyczna (RS485) nadal do diagnozy.
 - **Drugi licznik** wymaga nowej mapy Modbus (większe `awTcpInputRegs`, np. rejestry 0–199 – nowa wersja mapy), zgłoszone architektowi na etap 3.
 - **`energy_1m_calc` i `reactive_1h_calc`** są wolne na rocznych zakresach (widoki; panele czytają agregaty bezpośrednio) – przepisanie na funkcje zakresowe w etapie 4.
 - Taryfy i koszty energii nie należą do etapu 2 (etap 4); dashboardy ich nie zawierają.
