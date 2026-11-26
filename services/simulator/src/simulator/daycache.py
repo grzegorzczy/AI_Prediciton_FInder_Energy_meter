@@ -121,7 +121,9 @@ class DayCache:
                     pass
                 raise
         except OSError as exc:
-            LOG.warning("nie mogę zapisać pamięci sum dobowych %s (%s): następny start policzy od zera", self.path, exc)
+            LOG.warning("nie mogę zapisać pamięci sum dobowych %s (%s): następny start policzy od zera; "
+                        "kolejna próba przy następnej pełnej dobie", self.path, exc)
+            self.dirty = False                   # bez ponawiania co sekundę: put() nowej doby znowu ustawi dirty
             return False
         self.dirty = False
         return True

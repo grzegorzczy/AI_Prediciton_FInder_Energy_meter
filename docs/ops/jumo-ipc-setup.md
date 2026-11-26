@@ -351,7 +351,9 @@ Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje prz
 
 Ingest potwierdza wiadomość brokerowi dopiero po zapisie w bazie, więc awaria ingestu lub bazy nie gubi niczego w granicach
 kolejki sesji, a ponowne dostarczenie nie tworzy duplikatów (`ON CONFLICT DO NOTHING`). Przy niedostępnej bazie do ingestu
-dociera najwyżej 100 niepotwierdzonych wiadomości (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze. Dla
+dociera najwyżej 100 niepotwierdzonych wiadomości **QoS 1** (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze.
+Wiadomości QoS 0 (dane symulatora) limit ten nie obejmuje, dlatego ingest przy niedostępnej bazie je odrzuca (WARNING na
+początku i na końcu przerwy z liczbą odrzuconych) zamiast trzymać w pamięci (E3-k3). Dla
 demo akceptowalne; przy dłuższych przerwach trzeba liczyć się z luką w danych.
 
 ## Symulator (od etapu 3, E3-k3)

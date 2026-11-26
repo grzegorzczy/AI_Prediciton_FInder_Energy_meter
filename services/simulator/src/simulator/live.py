@@ -43,6 +43,7 @@ class LiveLoop:
         self.on_tick = on_tick
         self.last: int | None = None
         self.skipped_total = 0
+        self._value_error_logged = False
 
     def step(self) -> int:
         """Wysyła wszystkie należne sekundy (zwykle jedną) i zwraca ich liczbę; nie śpi."""
@@ -64,7 +65,16 @@ class LiveLoop:
         else:
             due = list(range(self.last + 1, now + 1))
         for t in due:
-            self.publisher.publish_batch(messages_for(self.sim, self.site, self.line, t))
+            try:
+                batch = messages_for(self.sim, self.site, self.line, t)
+            except ValueError as exc:                      # np. zegar cofnięty przed kotwicę liczników
+                if not self._value_error_logged:
+                    LOG.error("nie mogę policzyć próbek dla %s: %s (pomijam, sprawdź zegar)", iso_ms(t), exc)
+                    self._value_error_logged = True
+                self.last = t
+                continue
+            self._value_error_logged = False
+            self.publisher.publish_batch(batch)
             self.last = t
         if due:
             self.sim.cache.flush()                         # zapis tylko, gdy przybyła pełna doba (no-op w pozostałych)

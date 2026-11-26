@@ -73,14 +73,15 @@ class EnergyCounter:
         if t < self.anchor:
             raise ValueError(f"chwila {t} przed kotwicą licznika {self.meter.device.device_id} ({self.anchor})")
         last = self._last
-        if last is not None and last[0] <= t <= last[0] + 3600:
+        incremental = last is not None and last[0] <= t <= last[0] + 3600
+        if incremental:
             value = last[1] + self._sum(last[0], t)
         else:
             days, rest = divmod(t - self.anchor, DAY)
             base = sum(self._day_sum(i) for i in range(days))
             self._boundary(self.anchor + days * DAY, base)
             value = base + self._sum(self.anchor + days * DAY, self.anchor + days * DAY + rest)
-        if last is not None and last[0] < t:
+        if incremental and last[0] < t:                    # (ścieżka dobowa zapisała już swoją granicę wyżej)
             crossing = self.anchor + ((t - self.anchor) // DAY) * DAY     # początek doby t, jeśli przeszliśmy przez niego
             if last[0] < crossing <= t:
                 self._boundary(crossing, last[1] + self._sum(last[0], crossing))

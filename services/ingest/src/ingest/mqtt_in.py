@@ -57,7 +57,7 @@ class MqttInput:
 
     def _on_message(self, client, userdata, message) -> None:
         self.received_total += 1
-        self._queue.put(Incoming(message.topic, bytes(message.payload), (message.mid, message.qos)))
+        self._queue.put(Incoming(message.topic, bytes(message.payload), (message.mid, message.qos), message.qos))
 
     def start(self) -> None:
         self._client.connect_async(self._host, self._port, keepalive=30)

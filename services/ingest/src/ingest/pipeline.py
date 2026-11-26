@@ -4,6 +4,9 @@ Gwarancje:
 - wiadomość poprawna jest potwierdzana brokerowi dopiero PO udanym zapisie paczki (ack po commit);
 - wiadomość wadliwa jest potwierdzana od razu po zapisaniu powodu w liczniku i logu (nie blokuje sesji);
 - przy niedostępnej bazie paczka zostaje w pamięci bez potwierdzenia, ponawianie z cofaniem 1 s -> 10 s;
+- przy niedostępnej bazie wiadomości QoS 0 (dane symulatora, E3-k3 K3-D4) są odrzucane, a nie trzymane w pamięci: broker nie
+  ogranicza ich liczby w locie (`max_inflight_messages` dotyczy tylko QoS 1), więc inaczej pamięć ingestu rosłaby o 29 wiadomości
+  na sekundę aż do OOM; dane sim to funkcja czasu, lukę uzupełnia historia symulatora. QoS 1 (dane prawdziwe) bez zmian;
 - duplikaty (ponowne dostarczenie) usuwa ON CONFLICT DO NOTHING po stronie bazy.
 """
 from __future__ import annotations
@@ -32,6 +35,7 @@ class Incoming:
     topic: str
     payload: bytes
     token: Any                      # np. (mid, qos) z paho; przekazywany do ack()
+    qos: int = 1                    # QoS dostarczenia; 0 = dane symulatora (odrzucane przy niedostępnej bazie)
 
 
 @dataclass
@@ -49,9 +53,10 @@ class Stats:
         self.batches = 0
         self.batch_ms_total = 0.0
         self.batch_ms_max = 0.0
+        self.dropped_qos0 = 0
 
     def reset_interval(self) -> None:
-        self.received = self.written = self.duplicates = self.batches = 0
+        self.received = self.written = self.duplicates = self.batches = self.dropped_qos0 = 0
         self.batch_ms_total = self.batch_ms_max = 0.0
         self.rejected = Counter()
 
@@ -79,6 +84,7 @@ class Pipeline:
         self._retry_at = 0.0
         self._db_down_since: float | None = None
         self._last_down_log = 0.0
+        self._qos0_dropped_in_episode = 0
         self._seen_reject: set[tuple[str, str]] = set()
         self._known_pairs: set[tuple[str, str]] = set()
         self.stats = Stats()
@@ -100,6 +106,15 @@ class Pipeline:
     def feed(self, item: Incoming) -> None:
         self.stats.received += 1
         self.total.received += 1
+        if item.qos == 0 and self.db_down:
+            self.stats.dropped_qos0 += 1
+            self.total.dropped_qos0 += 1
+            if self._qos0_dropped_in_episode == 0:
+                LOG.warning("baza niedostępna: odrzucam wiadomości QoS 0 (dane symulatora) do jej powrotu; "
+                            "lukę uzupełni historia symulatora")
+            self._qos0_dropped_in_episode += 1
+            self._safe_ack(item.token)
+            return
         result = validate(item.topic, item.payload, self._config, self._wall(),
                           self._max_future_s, self._max_past_days)
         if isinstance(result, Rejection):
@@ -219,6 +234,10 @@ class Pipeline:
                         now - self._db_down_since, exc, len(self._pending))
 
     def _on_recovered(self) -> None:
+        if self._qos0_dropped_in_episode:
+            LOG.warning("baza znowu dostępna: w czasie przerwy odrzucono %d wiadomości QoS 0 (dane symulatora)",
+                        self._qos0_dropped_in_episode)
+            self._qos0_dropped_in_episode = 0
         if self._db_down_since is not None:
             LOG.info("baza dostępna po %.0f s", self._clock() - self._db_down_since)
         self._db_down_since = None
@@ -235,5 +254,7 @@ class Pipeline:
                 f"rejected={rejected} ({by_reason}) paczki={s.batches} zapis_ms_sr={avg:.1f} "
                 f"zapis_ms_maks={s.batch_ms_max:.1f} oczekujące={len(self._pending)} "
                 f"baza={'NIEDOSTEPNA' if self.db_down else 'OK'}")
+        if s.dropped_qos0:
+            text += f" odrzucone_qos0_przy_braku_bazy={s.dropped_qos0}"
         s.reset_interval()
         return text

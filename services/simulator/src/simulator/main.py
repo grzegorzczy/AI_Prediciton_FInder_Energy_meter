@@ -29,12 +29,15 @@ def main() -> int:
         cache_path = os.environ.get("SIM_CACHE", "/var/lib/simulator/energy-days.json") or None
         t0 = time.perf_counter()
         sim = Simulator(config, cache_path)
-        user, password = os.environ.get("MQTT_USER"), os.environ.get("MQTT_PASSWORD")
-        if not user or not password:
-            raise ConfigError("brak MQTT_USER / MQTT_PASSWORD (konto symulatora MQTT_SIM_USER / MQTT_SIM_PASSWORD w .env)")
+        user, password = os.environ.get("MQTT_USER", ""), os.environ.get("MQTT_PASSWORD", "")
     except ConfigError as exc:
         LOG.error("błąd konfiguracji: %s", exc)
         return 2
+    if not user or not password:
+        # K3-D1: bez konta nie kończymy procesu (pętla restartów); broker odrzuci połączenie, paho ponawia z cofaniem,
+        # a błąd autoryzacji jest logowany raz na epizod
+        LOG.error("brak konta MQTT symulatora (MQTT_SIM_USER / MQTT_SIM_PASSWORD w .env): dane nie będą wysyłane, "
+                  "dopóki konto nie zostanie dopisane i kontener odtworzony")
     now = int(time.time())
     source = sim.cache.source
     sim.prime(now)
