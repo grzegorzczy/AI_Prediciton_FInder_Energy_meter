@@ -116,11 +116,24 @@ def test_burst_throughput_and_exact_row_count(pg, migrated_db, harness, pub):
 
 def test_real_and_simulated_messages_land_together_with_their_sources(pg, migrated_db, harness, pub):
     """E3-k1, regresja ścieżki prawdziwej: wiadomości Findera i PLC z linia1 zapisują się jak dotąd, równolegle z danymi
-    urządzenia sim z linia2; wiadomość sim w linii sprzętu jest odrzucona."""
-    pub.publish(topic_for(metric="voltage"), make_payload(value=240.4, unit="V", ts=unique_ts()))
-    pub.publish("zaklad1/linia1/plc-01/link_status", make_payload(value=0, unit="", ts=unique_ts(1)))
-    pub.publish("zaklad1/linia2/sim_pasteryzator/active_power", make_payload(value=11700.0, unit="W", source="sim", ts=unique_ts(2)))
-    pub.publish("zaklad1/linia1/sim_pasteryzator/active_power", make_payload(value=1.0, unit="W", source="sim", ts=unique_ts(3)))
+    urządzenia sim z linia2 (od E3-k3 z konta symulatora, QoS 0; collector nie może pisać do linia2 – ACL K1-D2);
+    wiadomość sim w linii sprzętu nie trafia do bazy (odrzuca ją ACL brokera, a gdyby dotarła – ingest)."""
+    import paho.mqtt.client as mqtt
+
+    sim = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="t-sim-" + uuid.uuid4().hex[:6], protocol=mqtt.MQTTv5)
+    sim.username_pw_set(os.environ["MQTT_SIM_USER"], os.environ["MQTT_SIM_PASSWORD"])
+    sim.connect(os.environ["MQTT_HOST"], int(os.environ.get("MQTT_PORT", "1883")))
+    sim.loop_start()
+    try:
+        pub.publish(topic_for(metric="voltage"), make_payload(value=240.4, unit="V", ts=unique_ts()))
+        pub.publish("zaklad1/linia1/plc-01/link_status", make_payload(value=0, unit="", ts=unique_ts(1)))
+        sim.publish("zaklad1/linia2/sim_pasteryzator/active_power",
+                    make_payload(value=11700.0, unit="W", source="sim", ts=unique_ts(2)), qos=0).wait_for_publish(10)
+        sim.publish("zaklad1/linia1/sim_pasteryzator/active_power",
+                    make_payload(value=1.0, unit="W", source="sim", ts=unique_ts(3)), qos=0).wait_for_publish(10)
+    finally:
+        sim.loop_stop()
+        sim.disconnect()
     until(lambda: count_rows(pg, migrated_db) == 3)
     time.sleep(1.5)                                                     # odrzucona wiadomość nie dociera później
     got = {(r[1], r[2]): r[3:6] for r in rows(pg, migrated_db)}
