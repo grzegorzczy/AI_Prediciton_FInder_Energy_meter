@@ -149,5 +149,5 @@ def test_full_buffer_memory(sim_config):
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120,
                          env={**os.environ}).stdout.split()
     buffered, base_kb, peak_kb = map(int, out)
-    print(f"\nBUFOR 36000: RSS procesu {base_kb / 1024:.1f} -> {peak_kb / 1024:.1f} MiB (wzrost {(peak_kb - base_kb) / 1024:.1f} MiB)")
+    print(f"\nBUFOR 36000: RSS procesu (VmRSS) {base_kb / 1024:.1f} -> {peak_kb / 1024:.1f} MiB (wzrost {(peak_kb - base_kb) / 1024:.1f} MiB)")
     assert buffered == 36000 and peak_kb / 1024 < 100
