@@ -63,6 +63,20 @@ def test_config_without_simulator_section_gives_the_pre_stage3_devices(make_conf
         (lambda r: r["simulator"]["devices"][0].update(phases=2), "phases"),
         (lambda r: r["devices"][0].update(phases=2), "phases"),
         (lambda r: r.update(simulator=["x"]), "słownika"),
+        # przegląd k1: linia sim = linia sprzętu, złe typy i zakresy, liczba faz jako bool/float, wymagane pola liczników
+        (lambda r: r["simulator"].update(line="linia1"), "muszą być inne"),
+        (lambda r: r["simulator"]["devices"][0].update(rated_kw="abc"), "nie jest liczbą"),
+        (lambda r: r["simulator"]["devices"][0].update(rated_kw=-5), "dodatnia"),
+        (lambda r: r["simulator"]["devices"][0].update(rated_kw=float("nan")), "dodatnia"),
+        (lambda r: r["simulator"]["devices"][0].update(rated_kw=True), "nie jest liczbą"),
+        (lambda r: r["simulator"].update(poll_interval_s=0), "dodatnia"),
+        (lambda r: r["simulator"].update(poll_interval_s="x"), "nie jest liczbą"),
+        (lambda r: r["simulator"]["devices"][0].update(phases=True), "phases"),
+        (lambda r: r["simulator"]["devices"][0].update(phases=3.0), "phases"),
+        (lambda r: r["simulator"]["devices"][0].pop("phases"), "phases"),
+        (lambda r: r["simulator"]["devices"][0].pop("energy_resolution_wh"), "energy_resolution_wh"),
+        (lambda r: r["simulator"]["devices"][0].update(energy_resolution_wh=0), "dodatnia"),
+        (lambda r: r["simulator"]["devices"][4].update(phases=3), "nie dotyczy pompy"),
     ],
 )
 def test_invalid_simulator_configuration_is_rejected(make_config, mutate, fragment):

@@ -36,6 +36,22 @@ Temat `zaklad/linia/urzadzenie/metryka` → `device_id` = `urzadzenie`,
 | enabled | BOOLEAN | |
 | meta | JSONB | dodatkowe atrybuty z configu |
 
+Zakład i linia są **na urządzenie** (E3-k1): prawdziwy sprzęt (PLC `plc-01`, Finder) ma `zaklad1/linia1` z sekcji głównej
+`config/devices.yaml`, urządzenia symulatora (`sim_*`, `source = sim`) – `zaklad1/linia2` z sekcji `simulator`. Ingest przyjmuje
+wiadomość tylko wtedy, gdy zakład i linia z tematu są zakładem i linią tego urządzenia, a `source` w ładunku jest źródłem
+urządzenia; dane sim nie trafią więc pod prawdziwe urządzenie ani odwrotnie.
+
+Klucze `meta` (wpisuje ingest z configu; brak wartości = brak klucza):
+
+| Klucz | Urządzenia | Znaczenie |
+| --- | --- | --- |
+| `poll_interval_s` | liczniki, pompa | okres próbek [s]; widoki energii liczą z niego energię i pokrycie |
+| `energy_resolution_wh`, `reactive_resolution_varh` | liczniki | rozdzielczość stanu licznika energii [Wh], [varh] |
+| `phases` | liczniki | **1 – Finder (jednofazowy: U1, I1); 3 – liczniki symulatora (trójfazowe)**. U liczników trójfazowych `voltage` to napięcie fazowe, `current` prąd jednej fazy przy obciążeniu symetrycznym, a moce i energia są sumą trzech faz. Etap 4 nie może tych dwóch rodzajów mieszać (np. liczyć mocy z U × I bez uwzględnienia `phases`). |
+| `rated_kw` | urządzenia sim | parametr symulacji: moc znamionowa maszyny (liczniki) albo moc silnika pompy; **dla pompy to nie jest moc pobierana** – pompa nie publikuje `active_power` (K0-D9) |
+| `profile`, `block_base`, `serial` | Finder | profil rejestrów i numer seryjny z PLC |
+| `map_versions` | PLC | akceptowane wersje mapy Modbus |
+
 ### `measurements` (hypertable)
 
 | Kolumna | Typ | Opis |

@@ -305,6 +305,23 @@ Wszystkie usługi `aip-*` logują sterownikiem `local` (binarny, rotacja `max-si
 Powód: po utracie zasilania sterownik `json-file` zostawiał w pliku logu bajty `zerowe (NUL)` i `docker logs` przestawało działać (E2-PLC1). Odtworzenie kontenerów przy wdrożeniu (R-1) usuwa też stare uszkodzone pliki logów.
 Czytanie logów bez zmian: `docker logs aip-ingest`. Limit pamięci Grafany: 512 MiB i `GOMEMLIMIT=400MiB` (384 MiB kończyło się zabiciem przez OOM-killera jądra; ślad: `journalctl -k | grep -i oom`).
 
+## Katalog testów `~/ai-predykcja-dev` (od E3-k1)
+
+Produkcja montuje pliki z `~/ai-predykcja` (m.in. `config/devices.yaml`, czytany przez ingest i collector przy starcie), więc
+**w tym katalogu nie robimy `git pull` poza wdrożeniem (R-1)**. Testy nowych kroków idą z osobnego katalogu roboczego,
+`git worktree` tego samego repozytorium (bez osobnego klucza i bez kopii `.git`):
+
+```bash
+git -C ~/ai-predykcja worktree add ~/ai-predykcja-dev origin/main         # jednorazowo (E3-k1, 26.11.2026)
+cd ~/ai-predykcja-dev && git fetch -q origin && git checkout -q --detach origin/main   # przed każdym przebiegiem testów
+sh tests/run-tests.sh </dev/null                                         # projekt Compose aip-test, jak dotąd
+git -C ~/ai-predykcja status --short && git -C ~/ai-predykcja log --oneline -1     # kontrola: produkcja bez zmian
+```
+
+Worktree jest w trybie „detached HEAD” (gałąź `main` jest już wybrana w `~/ai-predykcja`). Nic z niego nie jest montowane do
+kontenerów produkcyjnych; `tests/run-tests.sh` uruchamia tylko projekt `aip-test` i sprząta tylko siebie. Usunięcie, gdy
+niepotrzebny: `git -C ~/ai-predykcja worktree remove ~/ai-predykcja-dev`.
+
 ## Kolejność wdrożenia zmian (R-1, k7d)
 
 Zawsze w tej kolejności, na komputerze w `/home/jumo/ai-predykcja`:

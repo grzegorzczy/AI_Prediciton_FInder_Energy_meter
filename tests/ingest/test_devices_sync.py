@@ -45,8 +45,8 @@ def test_simulated_devices_are_stored_with_their_own_line(pg, migrated_db, write
 
 
 def test_real_rows_are_unchanged_by_the_simulator_section_except_finder_phases(pg, migrated_db, writer_store, make_config):
-    """Regresja: wiersze PLC i Findera z configiem bez sekcji `simulator` i z nią są identyczne (poza `phases` Findera,
-    które jest w obu, bo pochodzi z sekcji `devices`)."""
+    """Regresja: wiersze PLC i Findera z configiem bez sekcji `simulator` i z nią są identyczne (wszystkie kolumny).
+    Różnicę metadanych Findera względem stanu sprzed k1 (wyłącznie `phases`) sprawdza test loadera."""
     writer_store.sync_devices(make_config(lambda raw: raw.pop("simulator")))
     before = devices(pg, migrated_db)
     assert set(before) == {"plc-01", "finder_7m24_1"}
@@ -109,3 +109,12 @@ def test_simulated_device_removed_from_config_is_disabled_and_real_ones_stay(pg,
     rows = devices(pg, migrated_db)
     assert rows["sim_pump_p101"][5] is False
     assert all(rows[k][5] is True for k in rows if k != "sim_pump_p101")
+
+
+
+def test_removing_the_whole_simulator_section_disables_all_simulated_devices(pg, migrated_db, writer_store, make_config):
+    writer_store.sync_devices(make_config())
+    assert writer_store.sync_devices(make_config(lambda raw: raw.pop("simulator"))) == (2, 5)
+    rows = devices(pg, migrated_db)
+    assert {k for k, r in rows.items() if r[5] is False} == SIM_IDS
+    assert rows["plc-01"][5] is True and rows["finder_7m24_1"][5] is True

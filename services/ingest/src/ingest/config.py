@@ -5,6 +5,7 @@ Ingest nie potrzebuje rejestrów Modbus, więc ma własny, mały parser zamiast 
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -118,17 +119,31 @@ def load_config_dict(raw: dict) -> IngestConfig:
             device_id=dev_id, name=str(dev.get("name", dev_id)), kind=str(_need(dev, "kind", f"devices.{dev_id}")),
             source=str(_need(dev, "source", f"devices.{dev_id}")), meta=meta, site=site, line=line,
         ))
-    _add_simulator(raw.get("simulator"), add)
+    _add_simulator(raw.get("simulator"), add, (site, line))
     return IngestConfig(site=site, line=line, devices=devices)
 
 
 def _phases(value: Any, where: str) -> int:
-    if value not in (1, 3):
+    # `type(...) is int`: YAML-owe `true` (bool) i `3.0` (float) nie są liczbą faz (przegląd k1, ustalenie 5)
+    if type(value) is not int or value not in (1, 3):
         raise ConfigError(f"{where}: phases={value!r}, dozwolone 1 lub 3")
-    return int(value)
+    return value
 
 
-def _add_simulator(section: Any, add) -> None:
+def _positive(value: Any, where: str, key: str) -> float:
+    """Dodatnia, skończona liczba z configu; zły typ lub zakres = ConfigError (ingest kończy się czytelnym komunikatem)."""
+    if isinstance(value, bool):
+        raise ConfigError(f"{where}: {key}={value!r} nie jest liczbą")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{where}: {key}={value!r} nie jest liczbą") from None
+    if not math.isfinite(number) or number <= 0:
+        raise ConfigError(f"{where}: {key}={value!r}, wymagana liczba dodatnia")
+    return number
+
+
+def _add_simulator(section: Any, add, real_site_line: tuple[str, str]) -> None:
     """Urządzenia symulatora (E3-k1): własny zakład i linia (dane sim tylko w swojej linii, K0-D3), zawsze `source: sim`.
     Brak sekcji = brak urządzeń sim (zachowanie sprzed etapu 3). Parametry modeli czyta symulator (k2), nie ingest."""
     if section is None:
@@ -136,7 +151,11 @@ def _add_simulator(section: Any, add) -> None:
     if not isinstance(section, dict):
         raise ConfigError("simulator: oczekiwano słownika")
     site, line = _site_line(section, "simulator")
+    if (site, line) == real_site_line:                     # K0-D3 wymuszone w kodzie, nie tylko w teście pliku (przegląd k1)
+        raise ConfigError(f"simulator: zakład/linia '{site}/{line}' muszą być inne niż linia prawdziwego sprzętu")
     poll_interval = section.get("poll_interval_s")
+    if poll_interval is not None:
+        poll_interval = _positive(poll_interval, "simulator", "poll_interval_s")
     for dev in _need(section, "devices", "simulator") or []:
         dev_id = str(_need(dev, "id", "simulator.devices"))
         where = f"simulator.devices.{dev_id}"
@@ -148,13 +167,16 @@ def _add_simulator(section: Any, add) -> None:
             raise ConfigError(f"{where}: source='{source}', urządzenie symulatora musi mieć source: sim")
         meta: dict[str, Any] = {}
         if poll_interval is not None:
-            meta["poll_interval_s"] = float(poll_interval)
-        if "energy_resolution_wh" in dev:
-            meta["energy_resolution_wh"] = float(dev["energy_resolution_wh"])
-        if "phases" in dev:
-            meta["phases"] = _phases(dev["phases"], where)
+            meta["poll_interval_s"] = poll_interval
+        if kind == "energy_meter":                         # U-1, K0-D8: liczba faz i rozdzielczość wymagane dla etapu 4
+            meta["energy_resolution_wh"] = _positive(_need(dev, "energy_resolution_wh", where), where, "energy_resolution_wh")
+            meta["phases"] = _phases(_need(dev, "phases", where), where)
+        else:
+            for key in ("phases", "energy_resolution_wh"):
+                if key in dev:
+                    raise ConfigError(f"{where}: {key} nie dotyczy pompy (pompa nie publikuje energii, K0-D9)")
         if "rated_kw" in dev:
-            meta["rated_kw"] = float(dev["rated_kw"])
+            meta["rated_kw"] = _positive(dev["rated_kw"], where, "rated_kw")
         add(DeviceSpec(device_id=dev_id, name=str(dev.get("name", dev_id)), kind=kind, source=source, meta=meta,
                        site=site, line=line))
 
