@@ -119,7 +119,7 @@ services:
       GRAFANA_URL: http://grafana:3000
       GRAFANA_ADMIN_PASSWORD: ${TEST_GRAFANA_ADMIN_PASSWORD:?uzyj tests/run-tests.sh}
       TEST_APP_READER_PASSWORD: ${TEST_APP_READER_PASSWORD:?uzyj tests/run-tests.sh}
-      PYTHONPATH: /repo/services/collector/src:/repo/services/ingest/src
+      PYTHONPATH: /repo/services/collector/src:/repo/services/ingest/src:/repo/services/simulator/src
       DB_HOST: db
       DB_PORT: "5432"
       POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?uzyj tests/run-tests.sh}

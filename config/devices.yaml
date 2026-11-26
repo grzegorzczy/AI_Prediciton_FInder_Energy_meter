@@ -1,5 +1,6 @@
 # Źródło prawdy o urządzeniach (reguła 3 w CLAUDE.md): żadnych adresów ani numerów rejestrów w kodzie.
-# Układ rejestrów PLC: docs/modbus-map.md (kontrakt, wersja 1). Zmiana mapy wymaga decyzji Grzegorza.
+# Układ rejestrów PLC: docs/modbus-map.md (kontrakt, wersja 2 od 25.11.2026; collector akceptuje v1 i v2, plc.map_versions).
+# Zmiana mapy wymaga decyzji Grzegorza.
 # Temat MQTT: {site}/{line}/{device_id}/{metric}; segmenty tylko ASCII, bez spacji (D1).
 
 site: zaklad1
@@ -73,15 +74,75 @@ devices:
 # Liczniki wirtualne są TRÓJFAZOWE (phases: 3): `voltage` = napięcie fazowe, `current` = prąd jednej fazy przy obciążeniu
 # symetrycznym, moce i energia = sumy trzech faz. Finder (wyżej) jest jednofazowy (phases: 1) – etap 4 nie może ich mieszać.
 # rated_kw: moc znamionowa maszyny (liczniki) lub moc silnika (pompa; pompa nie publikuje active_power, K0-D9).
-# Parametry modeli (kalendarz, profile pracy, degradacja pompy, ziarno) dochodzą w k2 razem z kodem symulatora.
+# Parametry modeli (E3-k2) to parametry SYMULACJI, nie dane maszyn; progi alarmowe ustala etap 5 (docs/decisions.md).
 simulator:
   site: zaklad1
   line: linia2                 # K0-D3: zaklad1/linia1 = prawdziwy sprzęt, zaklad1/linia2 = symulator
-  poll_interval_s: 1.0         # okres próbek na żywo; trafia do devices.meta (widoki energii)
-  t_zero: null                 # U-2: data „teraz” dla degradacji pompy, ustalana w k7 przy wdrożeniu
+  poll_interval_s: 1.0         # okres próbek na żywo; trafia do devices.meta (widoki energii); symulator wymaga 1.0
+  t_zero: null                 # U-2/K1-U2: data „teraz” dla degradacji i kotwicy liczników (k7); bez niej live/historia nie startują
+  seed: 20261126               # ziarno szumu: zmiana = inne, ale powtarzalne dane
+  calendar:                    # S2; czas lokalny z czasem letnim
+    timezone: Europe/Warsaw
+    shifts:                    # dni ISO: 1 = poniedziałek … 7 = niedziela
+      - { days: [1, 2, 3, 4, 5], start: "06:00", end: "22:00" }
+      - { days: [6], start: "06:00", end: "14:00" }
+    breaks:                    # przerwy planowe w czasie zmian (K2-D1); przerwa kończąca się z końcem zmiany jest ucinana
+      - { start: "10:00", minutes: 15 }
+      - { start: "13:30", minutes: 30 }
+      - { start: "18:00", minutes: 15 }
+    holidays: []               # daty YYYY-MM-DD bez pracy
+  ambient: { mean_c: 20, swing_c: 3, warmest_hour: 15 }      # temperatura otoczenia (chłodnia, łożysko pompy)
+  electrical: { voltage_v: 230, voltage_slow_v: 2.0, voltage_noise_v: 0.3 }
+  history: { meter_days: 14, pump_step_s: 60 }               # K0-D1: liczniki 1 s × 14 dni, pompa co 1 min (k5)
+  degradation: { days_total: 120, history_progress: 0.70, shape_k: 3.0 }   # K0-D2: historia pompy 84 dni
   devices:
-    - { id: sim_pasteryzator, name: "Pasteryzator", kind: energy_meter, source: sim, phases: 3, rated_kw: 18, energy_resolution_wh: 100 }
-    - { id: sim_chlodnia, name: "Agregat chłodniczy", kind: energy_meter, source: sim, phases: 3, rated_kw: 11, energy_resolution_wh: 100 }
-    - { id: sim_mieszalnik, name: "Mieszalnik", kind: energy_meter, source: sim, phases: 3, rated_kw: 7.5, energy_resolution_wh: 100 }
-    - { id: sim_pakowaczka, name: "Pakowaczka", kind: energy_meter, source: sim, phases: 3, rated_kw: 4, energy_resolution_wh: 100 }
-    - { id: sim_pump_p101, name: "Pompa P-101", kind: pump, source: sim, rated_kw: 11 }
+    # thermostat: w fazie wyłączonej grzałki obowiązuje p_idle_kw (pompy obiegowe i sterowanie pracują, K2-U6)
+    - id: sim_pasteryzator
+      name: "Pasteryzator"
+      kind: energy_meter
+      source: sim
+      phases: 3
+      rated_kw: 18
+      energy_resolution_wh: 100
+      energy_start_wh: 1250000     # stan licznika w kotwicy t_zero − history.meter_days
+      model: { type: thermostat, schedule: shifts, cycle_s: 60, on_fraction: 0.65, p_on_kw: 18, p_idle_kw: 2.5,
+               p_off_kw: 0.15, pf_run: 0.98, pf_idle: 0.90, pf_off: 0.90 }
+    - id: sim_chlodnia
+      name: "Agregat chłodniczy"
+      kind: energy_meter
+      source: sim
+      phases: 3
+      rated_kw: 11
+      energy_resolution_wh: 100
+      energy_start_wh: 2480000
+      model: { type: compressor, schedule: always, on_min: 14, off_min: 9, ambient_gain: 0.3, p_on_kw: 9.5,
+               p_off_kw: 0.4, pf_run: 0.84, pf_off: 0.60 }
+    - id: sim_mieszalnik
+      name: "Mieszalnik"
+      kind: energy_meter
+      source: sim
+      phases: 3
+      rated_kw: 7.5
+      energy_resolution_wh: 100
+      energy_start_wh: 610000
+      model: { type: batch, schedule: shifts, batch_min: 8, mix_min: 6, ramp_s: 20, p_mix_kw: 5.8, p_pause_kw: 0.3,
+               p_off_kw: 0.05, pf_run: 0.80, pf_idle: 0.45, pf_off: 0.45 }
+    - id: sim_pakowaczka
+      name: "Pakowaczka"
+      kind: energy_meter
+      source: sim
+      phases: 3
+      rated_kw: 4
+      energy_resolution_wh: 100
+      energy_start_wh: 390000
+      model: { type: continuous, schedule: shifts, p_run_kw: 3.2, swing: 0.15, p_idle_kw: 0.9, p_off_kw: 0.12,
+               pf_run: 0.78, pf_idle: 0.50, pf_off: 0.50 }
+    # pompa pracuje przez całą zmianę (także w przerwach), stoi poza zmianami (K2-U4); current_a = 11 kW / (√3·400 V·0,86·0,9)
+    - id: sim_pump_p101
+      name: "Pompa P-101"
+      kind: pump
+      source: sim
+      rated_kw: 11
+      model: { type: pump, schedule: shifts, speed_rpm: 2950, flow_m3_h: 40, current_a: 21,
+               vibration_good_mm_s: 1.1, vibration_end_mm_s: 7.0, bearing_good_c: 52, bearing_end_c: 78,
+               warmup_tau_min: 25, cooldown_tau_min: 40 }

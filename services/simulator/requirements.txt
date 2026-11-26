@@ -1,0 +1,2 @@
+PyYAML==6.0.4
+tzdata==2025.2               # baza stref czasowych dla zoneinfo niezależnie od obrazu (K2-U2)

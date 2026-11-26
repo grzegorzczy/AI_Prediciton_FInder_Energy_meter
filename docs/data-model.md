@@ -52,6 +52,28 @@ Klucze `meta` (wpisuje ingest z configu; brak wartości = brak klucza):
 | `profile`, `block_base`, `serial` | Finder | profil rejestrów i numer seryjny z PLC |
 | `map_versions` | PLC | akceptowane wersje mapy Modbus |
 
+### Metryki urządzeń symulatora (E3-k2)
+
+Wartości liczy biblioteka `services/simulator` jako deterministyczną funkcję chwili, ziarna i configu (`config/devices.yaml`,
+sekcja `simulator`); to **dane modelu, nie pomiary**. Na żywo co 1 s (k3), historia w k5.
+
+| Urządzenia | Metryka | Jednostka | Uwagi |
+| --- | --- | --- | --- |
+| liczniki sim (`energy_meter`, trójfazowe) | `active_power`, `reactive_power`, `voltage`, `current`, `power_factor`, `energy_import_wh` | `W`, `var`, `V`, `A`, –, `Wh` | `voltage` fazowe, `current` jednej fazy (I = S / 3U); Q > 0 (odbiorniki indukcyjne) |
+| pompa (`pump`) | `vibration_rms`, `bearing_temperature`, `motor_current`, `flow`, `speed` | `mm/s`, `°C`, `A`, `m³/h`, `rpm` | bez `active_power` (K0-D9) |
+
+- **Licznik `energy_import_wh` to całka modelu** od kotwicy (`t_zero` − `history.meter_days`) i `energy_start_wh`, kwantowana do
+  100 Wh: rośnie także wtedy, gdy próbek nie publikowano (jak prawdziwy licznik przy przerwie komunikacji), więc po przerwie
+  przyrost licznika może być większy niż całka z zapisanych próbek.
+- **Termostat (pasteryzator):** w fazie wyłączonej grzałki w czasie pracy obowiązuje `p_idle_kw` (pompy obiegowe i sterowanie
+  pracują, K2-U6); doba robocza ok. 192 kWh.
+- **Pompa:** pracuje przez całą zmianę, także w przerwach (cyrkulacja procesowa), stoi poza zmianami: wtedy `speed`, `flow`,
+  `motor_current` = 0, a `vibration_rms` to tło ok. 0,1 mm/s – analityka trendu drgań ma brać tylko próbki z `speed > 0`
+  (znacznik pracy w `pump_1m`, k4). Prąd silnika rośnie z degradacją o 5 % przy końcu krzywej (K2-U4).
+- **Degradacja pompy:** postęp x = 0,70 w `t_zero`, koniec krzywej po 120 dniach; po nim (x > 1) wartości zostają jak dla x = 1
+  (WARNING raz w logu), „wymiana łożyska” = nowe `t_zero` przy wdrożeniu i okno `sim_reset` w `data_windows` (K2-U1).
+  `vibration_end_mm_s` to koniec zakresu modelu, **nie próg alarmowy** (progi: etap 5).
+
 ### `measurements` (hypertable)
 
 | Kolumna | Typ | Opis |
