@@ -127,23 +127,25 @@ def test_buffer_keeps_messages_while_the_broker_is_away_and_drops_the_oldest(sim
     assert stamps[0] == iso_ms(START + 2) and stamps[-1] == iso_ms(START + 5)          # najstarsze odrzucone
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="moduł resource tylko w Linuksie (kontener testowy)")
+@pytest.mark.skipif(sys.platform == "win32", reason="/proc/self/status tylko w Linuksie (kontener testowy)")
 def test_full_buffer_memory(sim_config):
     """K3-D3: pełny bufor 36 000 wiadomości (ok. 20 min przy 29/s) w osobnym procesie – szczytowy RSS do raportu."""
     code = (
-        "import resource, sys\n"
+        "import sys\n"
+        "def rss():\n"
+        "    return int([l for l in open('/proc/self/status') if l.startswith('VmRSS')][0].split()[1])\n"
         "from simulator.publisher import Publisher\n"
         "class Down:\n"
         "    def is_connected(self): return False\n"
         "    def publish(self, t, p): return False\n"
         "    def start(self): pass\n"
         "    def stop(self): pass\n"
-        "base = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
+        "base = rss()\n"
         "pub = Publisher(Down(), 36000)\n"
         "payload = b'{\"ts\": \"2026-11-30T09:00:00.000Z\", \"value\": 11702.0, \"unit\": \"W\", \"source\": \"sim\"}'\n"
         "for i in range(40000):\n"
         "    pub.enqueue([('zaklad1/linia2/sim_pasteryzator/active_power', payload + str(i).encode())])\n"
-        "peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
+        "peak = rss()                       # VmRSS (ru_maxrss dziedziczy szczyt procesu pytest przez fork)\n"
         "print(pub.buffered, base, peak)\n"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120,
