@@ -11,8 +11,6 @@ wartości to wyłącznie przyspieszenie (start po N dobach od kotwicy liczy N d�
 """
 from __future__ import annotations
 
-import math
-
 from .meters import MeterModel
 
 DAY = 86400
