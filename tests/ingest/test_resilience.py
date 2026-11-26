@@ -46,7 +46,7 @@ def test_ingest_started_before_database_and_schema_waits_then_works(pg, fresh_db
         for i in range(3):
             pub.publish(topic_for(), make_payload(value=float(i), ts=unique_ts(i)))
         until(lambda: count_rows(pg, fresh_db) == 3)
-        assert admin_rows(pg, fresh_db, "SELECT count(*) FROM devices") == 2          # plc-01 i licznik zsynchronizowane
+        assert admin_rows(pg, fresh_db, "SELECT count(*) FROM devices") == 7          # plc-01, licznik i 5 urządzeń sim (E3-k1)
     finally:
         harness.stop(forget=True)
         store.close()
