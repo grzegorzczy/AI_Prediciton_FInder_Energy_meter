@@ -101,7 +101,7 @@ class Store:
         def action(conn: psycopg.Connection) -> tuple[int, int]:
             with conn.transaction():
                 for spec in config.devices.values():
-                    conn.execute(UPSERT_DEVICE, (spec.device_id, spec.name, config.site, config.line, spec.kind,
+                    conn.execute(UPSERT_DEVICE, (spec.device_id, spec.name, spec.site, spec.line, spec.kind,
                                                  spec.source, Jsonb(spec.meta)))
                 disabled = conn.execute(DISABLE_MISSING, (list(config.devices),)).rowcount
             return len(config.devices), disabled

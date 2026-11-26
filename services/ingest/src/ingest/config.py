@@ -1,4 +1,4 @@
-"""Minimalny parser config/devices.yaml dla ingestu: site, line, PLC i urządzenia (bez układu rejestrów).
+"""Minimalny parser config/devices.yaml dla ingestu: site, line, PLC, urządzenia i urządzenia symulatora (bez układu rejestrów).
 
 Ingest nie potrzebuje rejestrów Modbus, więc ma własny, mały parser zamiast wspólnej biblioteki z collectorem
 (decyzja K4-a); zgodność obu parserów z jednym plikiem pilnują testy. Adres IP PLC nie jest wczytywany do bazy.
@@ -14,6 +14,7 @@ import yaml
 
 SEGMENT = re.compile(r"^[A-Za-z0-9_-]+$")
 KINDS = ("plc", "energy_meter", "pump")        # zgodne z CHECK w db/migrations/001_core.sql
+SIM_KINDS = ("energy_meter", "pump")           # rodzaje urządzeń sekcji `simulator` (E3-k1)
 SOURCES = ("real", "sim")
 
 
@@ -28,13 +29,19 @@ class DeviceSpec:
     kind: str
     source: str
     meta: dict[str, Any] = field(default_factory=dict)
+    site: str = ""                 # zakład i linia urządzenia (temat MQTT i kolumny devices); E3-k1: na urządzenie
+    line: str = ""
 
 
 @dataclass(frozen=True)
 class IngestConfig:
-    site: str
+    site: str                      # zakład i linia prawdziwego sprzętu (PLC i `devices`)
     line: str
     devices: dict[str, DeviceSpec]
+
+    def site_lines(self) -> list[tuple[str, str]]:
+        """Pary (zakład, linia) występujące w configu, w kolejności pierwszego wystąpienia."""
+        return list(dict.fromkeys((spec.site, spec.line) for spec in self.devices.values()))
 
 
 def _need(mapping: Any, key: str, where: str) -> Any:
@@ -55,12 +62,17 @@ def _energy_resolution(profile: Any, where: str, key: str = "resolution_wh") -> 
     return values.pop() if values else None
 
 
-def load_config_dict(raw: dict) -> IngestConfig:
-    site = str(_need(raw, "site", "główna"))
-    line = str(_need(raw, "line", "główna"))
+def _site_line(mapping: Any, where: str) -> tuple[str, str]:
+    site = str(_need(mapping, "site", where))
+    line = str(_need(mapping, "line", where))
     for label, value in (("site", site), ("line", line)):
         if not SEGMENT.match(value):
-            raise ConfigError(f"{label}='{value}': dozwolone tylko ASCII, cyfry, '_' i '-'")
+            raise ConfigError(f"{where}: {label}='{value}': dozwolone tylko ASCII, cyfry, '_' i '-'")
+    return site, line
+
+
+def load_config_dict(raw: dict) -> IngestConfig:
+    site, line = _site_line(raw, "główna")
 
     devices: dict[str, DeviceSpec] = {}
 
@@ -80,6 +92,7 @@ def load_config_dict(raw: dict) -> IngestConfig:
     add(DeviceSpec(
         device_id=plc_id, name=str(plc.get("name", plc_id)), kind="plc", source=str(plc.get("source", "real")),
         meta={"map_versions": [int(v) for v in _need(plc, "map_versions", "plc")]},        # bez adresu IP
+        site=site, line=line,
     ))
     poll_interval = plc.get("poll_interval_s")
     profiles = raw.get("profiles") or {}
@@ -99,11 +112,51 @@ def load_config_dict(raw: dict) -> IngestConfig:
         reactive = _energy_resolution(profiles.get(profile_name), f"profiles.{profile_name}", "resolution_varh")
         if reactive is not None:
             meta["reactive_resolution_varh"] = reactive
+        if "phases" in dev:                       # E3-k1 (U-1): liczba faz licznika (Finder: 1), dla etapu 4
+            meta["phases"] = _phases(dev["phases"], f"devices.{dev_id}")
         add(DeviceSpec(
             device_id=dev_id, name=str(dev.get("name", dev_id)), kind=str(_need(dev, "kind", f"devices.{dev_id}")),
-            source=str(_need(dev, "source", f"devices.{dev_id}")), meta=meta,
+            source=str(_need(dev, "source", f"devices.{dev_id}")), meta=meta, site=site, line=line,
         ))
+    _add_simulator(raw.get("simulator"), add)
     return IngestConfig(site=site, line=line, devices=devices)
+
+
+def _phases(value: Any, where: str) -> int:
+    if value not in (1, 3):
+        raise ConfigError(f"{where}: phases={value!r}, dozwolone 1 lub 3")
+    return int(value)
+
+
+def _add_simulator(section: Any, add) -> None:
+    """Urządzenia symulatora (E3-k1): własny zakład i linia (dane sim tylko w swojej linii, K0-D3), zawsze `source: sim`.
+    Brak sekcji = brak urządzeń sim (zachowanie sprzed etapu 3). Parametry modeli czyta symulator (k2), nie ingest."""
+    if section is None:
+        return
+    if not isinstance(section, dict):
+        raise ConfigError("simulator: oczekiwano słownika")
+    site, line = _site_line(section, "simulator")
+    poll_interval = section.get("poll_interval_s")
+    for dev in _need(section, "devices", "simulator") or []:
+        dev_id = str(_need(dev, "id", "simulator.devices"))
+        where = f"simulator.devices.{dev_id}"
+        kind = str(_need(dev, "kind", where))
+        if kind not in SIM_KINDS:
+            raise ConfigError(f"{where}: rodzaj '{kind}' niedozwolony dla symulatora ({', '.join(SIM_KINDS)})")
+        source = str(_need(dev, "source", where))
+        if source != "sim":
+            raise ConfigError(f"{where}: source='{source}', urządzenie symulatora musi mieć source: sim")
+        meta: dict[str, Any] = {}
+        if poll_interval is not None:
+            meta["poll_interval_s"] = float(poll_interval)
+        if "energy_resolution_wh" in dev:
+            meta["energy_resolution_wh"] = float(dev["energy_resolution_wh"])
+        if "phases" in dev:
+            meta["phases"] = _phases(dev["phases"], where)
+        if "rated_kw" in dev:
+            meta["rated_kw"] = float(dev["rated_kw"])
+        add(DeviceSpec(device_id=dev_id, name=str(dev.get("name", dev_id)), kind=kind, source=source, meta=meta,
+                       site=site, line=line))
 
 
 def load_config(path: str | Path) -> IngestConfig:

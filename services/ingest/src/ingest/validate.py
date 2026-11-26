@@ -55,7 +55,7 @@ def validate(
     device = config.devices.get(device_id)
     if device is None:
         return Rejection("unknown_device", f"nieznane urządzenie '{device_id}'", device_id)
-    if site != config.site or line != config.line:
+    if site != device.site or line != device.line:          # E3-k1: zakład i linia urządzenia (sim tylko w swojej linii)
         return Rejection("site_line", f"zakład/linia '{site}/{line}' inne niż w konfiguracji", device_id)
     if len(metric) > MAX_METRIC_LEN or not METRIC.match(metric):
         return Rejection("metric", f"niedozwolona nazwa metryki '{metric[:MAX_METRIC_LEN]}'", device_id)

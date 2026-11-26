@@ -125,3 +125,32 @@ def test_metric_names_match_database_constraint(cfg):
         names = list(profile["metrics"]) + list(profile.get("energy", {}))
         for name in names:
             assert pattern.match(name), name
+
+
+
+# --- E3-k1: sekcja `simulator` (urządzenia sim, własna linia) ----------------------------------------------------------
+
+def test_simulator_section_identity_and_metadata(cfg):
+    sim = cfg["simulator"]
+    assert sim["site"] == cfg["site"] and sim["line"] == "linia2" and sim["line"] != cfg["line"]       # K0-D3
+    assert SEGMENT.match(sim["line"]) and sim["poll_interval_s"] == 1.0 and sim["t_zero"] is None   # t_zero w k7 (U-2)
+    devices = sim["devices"]
+    assert [d["id"] for d in devices] == ["sim_pasteryzator", "sim_chlodnia", "sim_mieszalnik", "sim_pakowaczka", "sim_pump_p101"]
+    for dev in devices:
+        assert dev["id"].startswith("sim_") and SEGMENT.match(dev["id"]) and dev["source"] == "sim", dev
+        assert "SYMULACJA" not in dev["name"].upper(), dev                    # znacznik dokłada Grafana z `source` (k6)
+        if dev["kind"] == "energy_meter":
+            assert dev["phases"] == 3 and dev["energy_resolution_wh"] == 100, dev     # U-1, K0-D8
+        else:
+            assert dev["kind"] == "pump" and "phases" not in dev and "energy_resolution_wh" not in dev
+    assert {d["id"]: d["rated_kw"] for d in devices} == {"sim_pasteryzator": 18, "sim_chlodnia": 11, "sim_mieszalnik": 7.5,
+                                                          "sim_pakowaczka": 4, "sim_pump_p101": 11}
+
+
+def test_ids_unique_across_real_and_simulated_devices(cfg):
+    ids = [cfg["plc"]["id"]] + [d["id"] for d in cfg["devices"]] + [d["id"] for d in cfg["simulator"]["devices"]]
+    assert len(ids) == len(set(ids))
+
+
+def test_finder_is_single_phase(cfg):
+    assert [d["phases"] for d in cfg["devices"]] == [1]

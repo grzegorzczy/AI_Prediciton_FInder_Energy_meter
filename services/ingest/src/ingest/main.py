@@ -121,8 +121,8 @@ def main() -> int:
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
 
-    LOG.info("start: temat %s/%s/<urządzenie>/<metryka>, urządzeń w configu: %d, paczka %s lub %s s",
-             config.site, config.line, len(config.devices), os.environ.get("INGEST_BATCH_MAX", "100"),
+    LOG.info("start: tematy %s/<urządzenie>/<metryka>, urządzeń w configu: %d, paczka %s lub %s s",
+             ", ".join(f"{s}/{l}" for s, l in config.site_lines()), len(config.devices), os.environ.get("INGEST_BATCH_MAX", "100"),
              os.environ.get("INGEST_FLUSH_S", "1.0"))
     try:
         serve(config, store, source, pipeline, stop, health_file=os.environ.get("HEALTH_FILE", health.DEFAULT_PATH))

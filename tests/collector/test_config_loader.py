@@ -47,3 +47,22 @@ def test_invalid_configuration_is_rejected(make_config, mutate, fragment):
 def test_missing_file_is_a_config_error(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "nie-ma.yaml")
+
+
+
+def test_collector_ignores_the_simulator_section():
+    """E3-k1: sekcja `simulator` i klucz `phases` nie zmieniają tego, co collector odpytuje: jedno urządzenie Modbus (Finder)."""
+    import copy
+
+    import yaml
+    from collector.config import load_config_dict
+
+    raw = yaml.safe_load(open(REPO / "config" / "devices.yaml", encoding="utf-8"))
+    assert "simulator" in raw
+    with_sim = load_config(REPO / "config" / "devices.yaml")
+    stripped = copy.deepcopy(raw)
+    stripped.pop("simulator")
+    for dev in stripped["devices"]:
+        dev.pop("phases", None)
+    assert [m.device_id for m in with_sim.meters] == ["finder_7m24_1"]
+    assert with_sim == load_config_dict(stripped)

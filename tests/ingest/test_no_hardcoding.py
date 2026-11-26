@@ -23,7 +23,9 @@ def test_no_ip_addresses_or_device_identifiers_in_code():
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if IP_LITERAL.search(line):
                 offenders.append(f"{path.relative_to(REPO)}:{number}: adres IP")
-            for token in ("F0183363", "finder_7m24", "plc-01", "zaklad1", "linia1", "192.168"):
+            for token in ("F0183363", "finder_7m24", "plc-01", "zaklad1", "linia1", "192.168", "linia2",
+                          "sim_pasteryzator", "sim_chlodnia", "sim_mieszalnik", "sim_pakowaczka", "sim_pump",
+                          "Pasteryzator", "Pompa P-101", "rated_kw: "):
                 if token in line:
                     offenders.append(f"{path.relative_to(REPO)}:{number}: {token}")
     assert offenders == []

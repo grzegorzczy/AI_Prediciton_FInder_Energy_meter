@@ -161,3 +161,38 @@ def test_simulated_device_accepts_sim_and_rejects_real(make_config):
 def test_order_of_checks_topic_before_payload(config):
     assert reason(run(topic="a/b", payload=b"", config=config)) == "topic"
     assert reason(run(topic="zaklad1/linia1/nieznany/voltage", payload=b"", config=config)) == "unknown_device"
+
+
+
+# --- E3-k1: zakład i linia na urządzenie (K0-D3); macierz urządzenie prawdziwe / sim × linia1 / linia2 -------------------
+
+SIM_PAYLOAD = dict(value=1500.0, unit="W", source="sim")
+
+
+@pytest.mark.parametrize("topic, payload, expected", [
+    ("zaklad1/linia1/finder_7m24_1/active_power", dict(value=7.1, unit="W"), None),                 # prawdziwy w swojej linii
+    ("zaklad1/linia1/plc-01/link_status", dict(value=0, unit=""), None),
+    ("zaklad1/linia2/finder_7m24_1/active_power", dict(value=7.1, unit="W"), "site_line"),          # prawdziwy w linii sim
+    ("zaklad1/linia2/plc-01/link_status", dict(value=0, unit=""), "site_line"),
+    ("zaklad1/linia2/sim_pasteryzator/active_power", SIM_PAYLOAD, None),                           # sim w swojej linii
+    ("zaklad1/linia2/sim_pump_p101/vibration_rms", dict(value=1.1, unit="mm/s", source="sim"), None),
+    ("zaklad1/linia1/sim_pasteryzator/active_power", SIM_PAYLOAD, "site_line"),                    # sim w linii sprzętu
+    ("zaklad2/linia2/sim_pasteryzator/active_power", SIM_PAYLOAD, "site_line"),                    # inny zakład
+    ("zaklad1/linia2/sim_pasteryzator/active_power", dict(value=1.0, unit="W", source="real"), "source"),
+    ("zaklad1/linia1/finder_7m24_1/active_power", dict(value=7.1, unit="W", source="sim"), "source"),
+])
+def test_site_line_and_source_matrix_for_real_and_simulated_devices(config, topic, payload, expected):
+    result = run(topic=topic, payload=make_payload(**payload), config=config)
+    if expected is None:
+        assert isinstance(result, Row), result
+        assert result.source == ("sim" if "/sim_" in topic else "real")
+    else:
+        assert reason(result) == expected
+
+
+def test_real_device_rows_are_identical_with_and_without_the_simulator_section(make_config):
+    """Regresja ścieżki danych prawdziwych: ten sam wiersz z configiem z sekcją `simulator` i bez niej."""
+    with_sim, without_sim = make_config(), make_config(lambda raw: raw.pop("simulator"))
+    for topic, payload in (("zaklad1/linia1/finder_7m24_1/voltage", make_payload()),
+                           ("zaklad1/linia1/plc-01/link_status", make_payload(value=0, unit=""))):
+        assert run(topic=topic, payload=payload, config=with_sim) == run(topic=topic, payload=payload, config=without_sim)
