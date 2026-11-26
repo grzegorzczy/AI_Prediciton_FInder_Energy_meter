@@ -87,6 +87,17 @@ def dev(raw, index):
     (lambda r: r["simulator"]["degradation"].update(history_progress=1.0), "history_progress"),
     (lambda r: r["simulator"]["history"].update(meter_days=0), "meter_days"),
     (lambda r: r["simulator"]["devices"].append(dict(r["simulator"]["devices"][0])), "powtórzone id"),
+    # przegląd k2, ustalenie 4
+    (lambda r: r["simulator"]["calendar"].update(holidays=[__import__("datetime").datetime(2026, 12, 24)]), "samą datę"),
+    (lambda r: r["simulator"]["calendar"].update(holiday=["2026-12-24"]), "nieznane klucze"),
+    (lambda r: r["simulator"].update(seeed=1), "nieznane klucze"),
+    (lambda r: dev(r, 0).update(ip="10.0.0.1"), "nieznane klucze"),
+    (lambda r: r["simulator"]["calendar"]["breaks"].append({"start": "10:05", "minutes": 5}), "nakładają"),
+    (lambda r: dev(r, 0)["model"].update(p_on_kw="18"), "nie jest liczbą"),
+    (lambda r: dev(r, 0)["model"].update(cycle_s=60.7), "całkowita"),
+    (lambda r: dev(r, 2)["model"].update(batch_min=7.5), "całkowita"),
+    (lambda r: r["simulator"]["electrical"].update(voltage_slow_v=50), "±4 %"),
+    (lambda r: r["simulator"].update(line="linia1"), "muszą być inne"),
 ])
 def test_invalid_parameters_are_rejected(make_raw, mutate, fragment):
     with pytest.raises(ConfigError) as error:

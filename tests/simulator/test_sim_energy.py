@@ -51,3 +51,17 @@ def test_sequential_and_random_access_give_the_same_value(sim_config):
     for t in (day_boundary - 1, day_boundary, day_boundary + 599):
         assert random.integral_wh(t) == pytest.approx(sequential.integral_wh(t), abs=1e-6)
         assert math.isclose(random.value_wh(t), sequential.value_wh(t))
+
+
+
+def test_integral_is_exact_integer_watt_seconds_on_both_paths(sim_config):
+    """Przegląd k2, ustalenie 3: suma W·s w liczbach całkowitych – ścieżka „po kolei” i „sumy dobowe” są identyczne."""
+    boundary = ANCHOR + 13 * 86400
+    sequential = Simulator(sim_config).meters["sim_mieszalnik"][1]
+    for t in range(boundary - 3000, boundary + 3000, 1):
+        sequential.integral_ws(t)
+    random = Simulator(sim_config).meters["sim_mieszalnik"][1]
+    for t in (boundary - 1, boundary, boundary + 2999):
+        assert isinstance(random.integral_ws(t), int)
+        assert random.integral_ws(t) == sequential.integral_ws(t)
+        assert random.value_wh(t) == sequential.value_wh(t)

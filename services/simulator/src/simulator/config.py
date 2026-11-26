@@ -29,6 +29,7 @@ MODEL_PARAMS: dict[str, tuple[str, ...]] = {
     "pump": ("speed_rpm", "flow_m3_h", "current_a", "vibration_good_mm_s", "vibration_end_mm_s", "bearing_good_c",
              "bearing_end_c", "warmup_tau_min", "cooldown_tau_min"),
 }
+INTEGER_PARAMS = {"cycle_s", "ramp_s", "on_min", "off_min", "batch_min", "mix_min"}   # pełne sekundy / minuty cyklu
 FRACTIONS = {"on_fraction", "swing", "ambient_gain"}         # ułamki: 0 < x < 1 (ambient_gain: 0 <= x < 1)
 POWER_FACTORS = {"pf_run", "pf_idle", "pf_off"}               # 0 < PF <= 1
 METER_KINDS = {"thermostat", "compressor", "batch", "continuous"}
@@ -135,7 +136,7 @@ def _need(mapping: Any, key: str, where: str) -> Any:
 
 
 def _number(value: Any, where: str, key: str, *, positive: bool = True, allow_zero: bool = False) -> float:
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):        # tekst "18" też nie jest liczbą
         raise ConfigError(f"{where}: {key}={value!r} nie jest liczbą")
     try:
         number = float(value)
@@ -146,6 +147,12 @@ def _number(value: Any, where: str, key: str, *, positive: bool = True, allow_ze
     if positive and (number < 0 or (number == 0 and not allow_zero)):
         raise ConfigError(f"{where}: {key}={value!r}, wymagana liczba {'nieujemna' if allow_zero else 'dodatnia'}")
     return number
+
+
+def _no_unknown(mapping: dict, allowed: set[str], where: str) -> None:
+    unknown = set(mapping) - allowed
+    if unknown:
+        raise ConfigError(f"{where}: nieznane klucze {sorted(unknown)} (literówka?)")
 
 
 def _int(value: Any, where: str, key: str) -> int:
@@ -205,8 +212,15 @@ def _calendar(raw: Any) -> Calendar:
     for item in raw.get("breaks") or []:
         start = _hhmm(_need(item, "start", f"{where}.breaks"), f"{where}.breaks")
         breaks.append(Break(start, _int(_need(item, "minutes", f"{where}.breaks"), f"{where}.breaks", "minutes")))
+    ordered = sorted(breaks, key=lambda b: b.start_min)
+    for first, second in zip(ordered, ordered[1:]):
+        if first.start_min + first.minutes > second.start_min:
+            raise ConfigError(f"{where}.breaks: przerwy nakładają się")
+    _no_unknown(raw, {"timezone", "shifts", "breaks", "holidays"}, where)
     holidays = set()
     for item in raw.get("holidays") or []:
+        if isinstance(item, datetime):            # znacznik czasu nigdy nie równa się dacie: święto by nie zadziałało
+            raise ConfigError(f"{where}.holidays: {item!r} – podaj samą datę YYYY-MM-DD")
         try:
             holidays.add(item if isinstance(item, date) else date.fromisoformat(str(item)))
         except ValueError:
@@ -242,6 +256,8 @@ def _device(dev: Any, poll: float) -> SimDevice:
                 raise ConfigError(f"{where}.model: {key}={value!r}, współczynnik mocy w (0, 1]")
         else:
             number = _number(value, f"{where}.model", key)
+        if key in INTEGER_PARAMS and number != int(number):
+            raise ConfigError(f"{where}.model: {key}={value!r}, wymagana liczba całkowita")
         params[key] = number
     unknown = set(model) - set(MODEL_PARAMS[model_type]) - {"type", "schedule"}
     if unknown:
@@ -258,6 +274,7 @@ def _device(dev: Any, poll: float) -> SimDevice:
         raise ConfigError(f"{where}.model: vibration_end_mm_s musi być większe niż vibration_good_mm_s")
     if model_type == "pump" and params["bearing_end_c"] <= params["bearing_good_c"]:
         raise ConfigError(f"{where}.model: bearing_end_c musi być większe niż bearing_good_c")
+    _no_unknown(dev, {"id", "name", "kind", "source", "phases", "rated_kw", "energy_resolution_wh", "energy_start_wh", "model"}, where)
     energy_start = resolution = phases = None
     if kind == "energy_meter":
         energy_start = _number(_need(dev, "energy_start_wh", where), where, "energy_start_wh", allow_zero=True)
@@ -272,10 +289,14 @@ def load_config_dict(raw: dict) -> SimConfig:
     section = _need(raw, "simulator", "główna")
     if not isinstance(section, dict):
         raise ConfigError("simulator: oczekiwano słownika")
+    _no_unknown(section, {"site", "line", "poll_interval_s", "t_zero", "seed", "calendar", "ambient", "electrical", "history",
+                          "degradation", "devices"}, "simulator")
     site, line = str(_need(section, "site", "simulator")), str(_need(section, "line", "simulator"))
     for label, value in (("site", site), ("line", line)):
         if not SEGMENT.match(value):
             raise ConfigError(f"simulator: {label}='{value}': dozwolone tylko ASCII, cyfry, '_' i '-'")
+    if (site, line) == (raw.get("site"), raw.get("line")):           # jak w ingeście (K0-D3): symulator nie pisze do linii sprzętu
+        raise ConfigError(f"simulator: zakład/linia '{site}/{line}' muszą być inne niż linia prawdziwego sprzętu")
     poll = _number(_need(section, "poll_interval_s", "simulator"), "simulator", "poll_interval_s")
     if poll != 1.0:
         raise ConfigError("simulator: poll_interval_s musi wynosić 1.0 (widoki energii zakładają próbki co 1 s, K0-D1)")
@@ -291,6 +312,8 @@ def load_config_dict(raw: dict) -> SimConfig:
     el = _need(section, "electrical", "simulator")
     electrical = Electrical(*(_number(_need(el, k, "simulator.electrical"), "simulator.electrical", k, allow_zero=(k != "voltage_v"))
                               for k in ("voltage_v", "voltage_slow_v", "voltage_noise_v")))
+    if electrical.voltage_slow_v + 4 * electrical.voltage_noise_v > 0.04 * electrical.voltage_v:
+        raise ConfigError("simulator.electrical: wahania napięcia większe niż ±4 % napięcia znamionowego")
     hist = _need(section, "history", "simulator")
     history = History(_int(_need(hist, "meter_days", "simulator.history"), "simulator.history", "meter_days"),
                       _int(_need(hist, "pump_step_s", "simulator.history"), "simulator.history", "pump_step_s"))
