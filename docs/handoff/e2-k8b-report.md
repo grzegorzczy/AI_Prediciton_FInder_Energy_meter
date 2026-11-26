@@ -105,9 +105,29 @@ Wniosek: **największy szczyt zwykłej pracy (320 MiB, 62,6 %) dało otwarcie da
 ### 4.2 TimescaleDB
 `docker stats` 307–464 MiB (30 %), ale `memory.peak` rośnie stale (617 → 1 074 MiB w 18 h, ok. 25 MiB/h; skok +82 MiB o 06:53 UTC = przebieg zadania kompresji): to pamięć podręczna plików nieskompresowanych chunków (274 + 100 MB) i `shared_buffers` (384 MB), którą jądro odzyskuje przed OOM. Po kompresji chunku 25.11 (27.11) wzrost powinien się zatrzymać; przy 49 wierszach/s (etap 3) nieskompresowane chunki będą ok. 2,5× większe – do obserwacji w etapie 3, `oom_kill` = 0.
 
-### 4.3 Pamięć po pełnej dobie (do uzupełnienia po 13:00 UTC)
+### 4.3 TimescaleDB: z czego składa się pamięć (zamiast pomiaru 24 h)
 
-_Do uzupełnienia: przebieg 25.11 13:29 – 26.11 13:29 UTC (bez okresu testów 07:17–07:30), `memory.peak` i `memory.events` po pełnej dobie._
+Decyzja Grzegorza (26.11): okno 17 h 47 min z nocą wystarcza jako pomiar „po dobie”; osobnego pomiaru 24 h nie robię. Zamiast niego rozkład pamięci cgroup `aip-timescaledb` (odczyt `memory.current`, `memory.stat`, `memory.events`, 26.11 08:05:14 UTC, bez sudo):
+
+| Pozycja | Bajty | MiB | Co to jest |
+| --- | --- | --- | --- |
+| `memory.current` | 937 209 856 | 893,8 | całość liczona do limitu (1 536 MiB) = 58,2 % |
+| `anon` | 11 685 888 | **11,1** | prywatna pamięć procesów PostgreSQL |
+| `file` | 907 399 168 | 865,4 | pamięć związana z plikami, w tym poniższe |
+| – `shmem` | 427 282 432 | 407,5 | pamięć współdzielona: `shared_buffers` (384 MB) i segmenty dynamiczne; stała, nie rośnie z danymi |
+| – `inactive_file` | 450 859 008 | **430,0** | pamięć podręczna plików, nieaktywna: **jądro odzyskuje ją przed OOM** |
+| – `active_file` | 29 257 728 | 27,9 | pamięć podręczna plików, aktywna |
+| `active_anon` | 438 968 320 | 418,6 | (w cgroup v2 obejmuje `shmem` i `anon`) |
+| `kernel` (w tym `slab` 14,5 MiB) | 18 124 800 | 17,3 | struktury jądra |
+| `memory.peak` | 1 126 191 104 | 1 074,0 | szczyt od utworzenia kontenera |
+| `memory.events` | – | – | `low 0, high 0, max 0, oom 0, oom_kill 0` |
+
+`docker stats` w tej samej chwili: 463,9 MiB = `memory.current` − `inactive_file` (893,8 − 430,0), czyli `docker stats` pomija właśnie odzyskiwalny cache.
+**Wniosek:** wzrost `memory.peak` z sekcji 4.2 to **pamięć podręczna plików**, a nie pamięć procesu. Pamięć procesów to 11 MiB, a część nieodzyskiwalna (`anon` + `shmem` + `kernel`) to ok. 436 MiB, czyli 28 % limitu; reszta (ok. 458 MiB cache plików, z tego 430 MiB nieaktywnego) zostanie zwolniona, zanim zadziała OOM-killer (licznik `max` = 0: limit ani razu nie był osiągnięty). Limitu 1 536 MiB nie trzeba zmieniać; przy 49 wierszach/s (etap 3) cache urośnie, ale bez wpływu na OOM – kontrola `oom_kill` w cronie.
+
+### 4.4 Cron pomiaru pamięci zostaje
+
+Decyzja Grzegorza (26.11): crontab `jumo` z `~/aip-monitor/sample.sh` (co minutę, `~/aip-monitor/stats-YYYYMMDD.log`) **zostaje włączony** jako pomiar odniesienia przed etapem 3 i pomiar wpływu symulatora w etapie 3. Uwagi: skrypt zapisuje też kontenery `aip-test-*` (odróżnialne po nazwie, analiza je pomija); ok. 1,5 MB na dobę, pliki nie są kasowane automatycznie (przy 869 GB wolnego bez znaczenia; sprzątanie ręczne). Wyłączenie: `crontab -r` na koncie `jumo`.
 
 ## 5. Podsumowanie i dalej
 
@@ -120,5 +140,5 @@ _Do uzupełnienia: przebieg 25.11 13:29 – 26.11 13:29 UTC (bez okresu testów 
 | Pamięć (17 h 47 min) | 0 OOM; szczyt Grafany 76,7 % (okno harnessu 13:12), w zwykłej pracy 62,6 % (otwarcie dashboardu 22:00 UTC) |
 | Nowe | epizody E2-PLC1 także pod mapą v2 (57 od 25.11 14:41 UTC) |
 
-Do decyzji architekta: (1) czy dopisać B/wiersz dla v2 po 28.11; (2) korekta zdania o E2-PLC1 w `etap-2.md`; (3) uzupełnienie sekcji 4.3 po 13:00 UTC.
+Do decyzji architekta: (1) czy dopisać B/wiersz dla v2 po 28.11; (2) korekta zdania o E2-PLC1 w `etap-2.md`; (3) sekcja 4.3: rozkład pamięci bazy zamiast pomiaru 24 h (decyzja Grzegorza), cron zostaje (4.4).
 Stop.
