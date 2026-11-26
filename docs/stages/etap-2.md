@@ -17,7 +17,7 @@ Polecenia wykonujesz z laptopa w cmd jako `ssh jumo@192.168.0.213 "<polecenie>"`
 | # | Krok (polecenie) | Oczekiwane | Stan |
 | --- | --- | --- | --- |
 | 1 | `docker compose -f ai-predykcja/docker-compose.yml ps` | `aip-mosquitto`, `aip-timescaledb`, `aip-ingest`, `aip-collector`, `aip-grafana` = Up (healthy); `aip-migrate` = Exited (0) | OK (25.11): 5 × Up (healthy); `ps` bez `-a` nie pokazuje zakończonego `aip-migrate` – zgodnie z oczekiwaniem |
-| 2 | `docker stats --no-stream` | każdy kontener poniżej swojego limitu (część B: pomiar po dobie, szczyt ≤ 80 % limitu) | OK wstępnie (26.11, 17 h 47 min): 0 OOM; szczyt Grafany 76,7 % (harness 25.11 13:12), w zwykłej pracy maks. 62,6 %; pełna doba – uzupełnienie po 13:00 |
+| 2 | `docker stats --no-stream` | każdy kontener poniżej swojego limitu (część B: pomiar po dobie, szczyt ≤ 80 % limitu) | OK (26.11, pomiar 17 h 47 min z nocą – decyzja Grzegorza zamiast 24 h): 0 OOM; Grafana szczyt 76,7 % (harness 25.11 13:12), w zwykłej pracy maks. 62,6 %; TimescaleDB 58 %, w tym 458 MiB odzyskiwalnej pamięci podręcznej, procesy 11 MiB |
 | 3 | `ss -ltn` | z nowych portów tylko 1883 (127.0.0.1) i 3000; 80/443 zajęte przez smartWARE; baza bez portu na hoście | OK (25.11): 1883 tylko 127.0.0.1, 3000; 5432 bez portu na hoście |
 | 4 | `psql … -c "SELECT version, name FROM schema_migrations ORDER BY 1"` | 11 wierszy (001–011) | OK (25.11): 11 migracji 001–011 |
 | 5 | `git ls-files \| findstr /i ".env"` w repo na laptopie | tylko `.env.example`; sekretów w repo brak | OK (25.11): tylko `.env.example` |

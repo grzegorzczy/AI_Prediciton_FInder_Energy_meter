@@ -27,6 +27,8 @@ przeszedł checklistę `docs/stages/etap-N.md` na sprzęcie.
 
 | Etap | Stan |
 | --- | --- |
-| 0 | W toku: repozytorium gotowe; przygotowanie Ubuntu zaplanowane |
+| 0 | Zakończony |
 | 1 | Zakończony 23.11.2026 (kryterium: `mbpoll` pokazał 240,4 V) |
-| 2–7 | Nie rozpoczęte |
+| 2 | Zakończony 26.11.2026 (checklista `docs/stages/etap-2.md` zaakceptowana przez Grzegorza) |
+| 3 | W toku |
+| 4–7 | Nie rozpoczęte |
