@@ -3,8 +3,13 @@ pamięć sum dobowych na sesję testów (K2R-U5: nowe instancje nie liczą dób 
 from __future__ import annotations
 
 import copy
+import sys
+from pathlib import Path
 
 import pytest
+
+# test_sim_e2e używa helperów ingestu (ingest_support); bez tego działał tylko w pełnym zestawie (tests/ingest zebrane wcześniej)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ingest"))
 import yaml
 
 from dbtools import REPO
