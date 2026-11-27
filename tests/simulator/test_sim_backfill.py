@@ -85,7 +85,12 @@ def test_window_limits_inflight_and_rate():
     assert len(window.pending) <= 3 and client.log.count("wait") >= 7
     clock = {"t": 0.0}
     slept = []
-    rated = Window(Client(), inflight=100, rate=10, clock=lambda: clock["t"], sleep=slept.append)
+
+    def sleep(seconds):
+        slept.append(seconds)
+        clock["t"] += seconds
+
+    rated = Window(Client(), inflight=100, rate=10, clock=lambda: clock["t"], sleep=sleep)
     for i in range(20):
         rated.publish("t", b"x")
     assert sum(slept) == pytest.approx(2.0, abs=0.11)                           # 20 wiadomości przy 10/s = ok. 2 s
