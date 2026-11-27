@@ -69,6 +69,7 @@ CREATE OR REPLACE VIEW pump_1m_calc AS
 SELECT
     bucket,
     device_id,
+    vibration_n,
     vibration_sum / nullif(vibration_n, 0)                         AS vibration_avg,
     vibration_min,
     vibration_max,
