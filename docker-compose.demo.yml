@@ -1,0 +1,10 @@
+# Stos demonstracyjny do zrzutów (E3-k6, K6-D3): łączony z docker-compose.test.yml i docker-compose.perf.yml (baza na dysku)
+# przez tests/run-demo.sh w projekcie aip-demo. Grafana tylko na 127.0.0.1 komputera (dostęp tunelem ssh -L, bez portu w LAN).
+# Po zrzutach: sh tests/run-demo.sh down (stos nie zostaje na noc).
+services:
+  grafana:
+    ports:
+      - "127.0.0.1:3300:3000"
+  pytest:
+    mem_limit: 384m             # ingest + symulator na żywo + narzędzie historii w jednym kontenerze
+    memswap_limit: 384m

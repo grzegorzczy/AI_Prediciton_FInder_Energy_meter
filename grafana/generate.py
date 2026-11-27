@@ -33,6 +33,12 @@ SPAN_GUARD_7D = "($__timeTo()::timestamptz - $__timeFrom()::timestamptz) <= inte
 NO_DATA_CODE = 100          # sztuczny stan "brak danych" (luka w danych lub dane starsze niż $stale_s)
 NO_METER_CODE = 101         # PLC działa, ale licznik nie ma świeżego statusu
 
+# Etykieta urządzenia z dopiskiem SYMULACJA wyliczanym z devices.source (S10): żadnych nazw urządzeń w generatorze (zasada 3).
+SIM_MARK = "SYMULACJA"
+SIM_LABEL = f"name || CASE WHEN source = 'sim' THEN ' ({SIM_MARK})' ELSE '' END"
+SIM_BANNER = (f"**Urządzenia oznaczone „{SIM_MARK}” pokazują dane symulowane** (`source = sim`: wirtualne liczniki i pompa "
+              "z symulatora, nie pomiary z maszyn). Urządzenia bez dopisku to pomiary prawdziwe.")
+
 ANNOTATION_SQL = (
     'SELECT start_time AS time, end_time AS "timeEnd", kind AS tags, description AS text FROM data_windows '
     "WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time"
@@ -202,23 +208,29 @@ def variables(*names: str) -> list[dict]:
         "f_nom": "Częstotliwość znamionowa [Hz]", "f_band_hz": "Pasmo częstotliwości [± Hz]",
         "stale_s": "Dane uznane za stare po [s]",
     }
-    out = [{
-        "type": "query", "name": "device", "label": "Licznik", "datasource": DS, "refresh": 1, "sort": 1,
-        "multi": False, "includeAll": False, "hide": 0,
-        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
-        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
-        "current": {},
-    }]
+    out = [device_variable("device", "Licznik", "energy_meter")]
     for name in names:
-        out.append({"type": "textbox", "name": name, "label": labels[name], "query": DEFAULTS[name],
-                    "current": {"text": DEFAULTS[name], "value": DEFAULTS[name]}, "hide": 0,
-                    "options": [{"selected": True, "text": DEFAULTS[name], "value": DEFAULTS[name]}]})
+        out.append(textbox(name, labels[name]))
     return out
+
+
+def device_variable(name: str, label: str, kind: str) -> dict:
+    """Lista urządzeń danego rodzaju; etykieta z dopiskiem SYMULACJA z devices.source (S10, K6-U2: wartość = device_id bez zmian)."""
+    sql = f"SELECT device_id AS __value, {SIM_LABEL} AS __text FROM devices WHERE kind = '{kind}' AND enabled ORDER BY 1"
+    return {"type": "query", "name": name, "label": label, "datasource": DS, "refresh": 1, "sort": 1,
+            "multi": False, "includeAll": False, "hide": 0, "query": sql, "definition": sql, "current": {}}
+
+
+def textbox(name: str, label: str) -> dict:
+    return {"type": "textbox", "name": name, "label": label, "query": DEFAULTS[name],
+            "current": {"text": DEFAULTS[name], "value": DEFAULTS[name]}, "hide": 0,
+            "options": [{"selected": True, "text": DEFAULTS[name], "value": DEFAULTS[name]}]}
 
 
 def nav_links() -> list[dict]:
     items = [("Przegląd", "aip-przeglad"), ("Licznik na żywo", "aip-na-zywo"), ("Jakość energii", "aip-jakosc"),
-             ("Energia i profil", "aip-energia"), ("Stan i diagnostyka", "aip-diagnostyka")]
+             ("Energia i profil", "aip-energia"), ("Stan i diagnostyka", "aip-diagnostyka"), ("Flota", "aip-flota"),
+             ("Pompa", "aip-pompa")]
     return [{"type": "link", "title": title, "url": f"/d/{uid}", "icon": "dashboard", "includeVars": True,
              "keepTime": True, "targetBlank": False, "asDropdown": False} for title, uid in items]
 
@@ -732,7 +744,184 @@ def diagnostics() -> Dash:
     return d
 
 
-DASHBOARDS = {"przeglad": overview, "na-zywo": live, "jakosc": quality, "energia": energy, "diagnostyka": diagnostics}
+# --- 6. Flota (E3-k6) --------------------------------------------------------------------------------------------------------
+
+METERS = "d.kind = 'energy_meter' AND d.enabled"
+D_POLL = "(d.meta ->> 'poll_interval_s')::float8"
+D_LABEL = SIM_LABEL.replace("name", "d.name").replace("source", "d.source")
+FRESH_MAP = mapping({2: "Dane", 1: "Dane niepełne", 0: "Brak danych"})
+for _code, _color in {2: "green", 1: "orange", 0: "red"}.items():
+    FRESH_MAP[0]["options"][str(_code)]["color"] = _color
+
+
+def banner(d: Dash) -> None:
+    panel = _panel("text", "Dane symulowane", "Objaśnienie znacznika SYMULACJA (S10).", [],
+                   options={"mode": "markdown", "content": SIM_BANNER})
+    d.add(panel, 24, 2, new_row=True)
+
+
+def coverage_states(device_filter: str, label: str, poll: str, source: str, n_col: str) -> str:
+    """Oś stanów świeżości/pokrycia: kubełki co max($__interval, 1 min) wygenerowane w SQL (brak wiersza w agregacie = „Brak danych”,
+    a nie przerwa w osi), na urządzenie. Kubełek w toku liczony tylko z upłyniętej części."""
+    return (f"WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), "
+            f"b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), "
+            f"a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum({n_col}) AS n FROM {source}, s "
+            f"WHERE $__timeFilter(bucket) GROUP BY 1, 2) "
+            f"SELECT b.t AS time, {label} AS metric, CASE "
+            f"WHEN coalesce(a.n, 0) * {poll} >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 "
+            f"WHEN coalesce(a.n, 0) > 0 THEN 1 ELSE 0 END AS value "
+            f"FROM b CROSS JOIN s CROSS JOIN devices d LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id "
+            f"WHERE {device_filter} AND b.t <= now() ORDER BY 1, 2")
+
+
+def fleet() -> Dash:
+    d = Dash("aip-flota", "Flota",
+             "Wszystkie liczniki energii naraz: prawdziwe (pomiar przez PLC) i symulowane (dopisek SYMULACJA). Stan = świeżość danych "
+             "(nie praca/postój maszyny – to etap 4). Moc i energia z agregatów minutowych i godzinnych.", "30s", "now-24h")
+    d.variables = [textbox("stale_s", "Dane uznane za stare po [s]")]
+    d.links = nav_links()
+    banner(d)
+    last = ("(SELECT max(time) FROM measurements m WHERE m.device_id = d.device_id AND m.metric = 'active_power' "
+            "AND m.time > now() - interval '1 hour')")
+    power_now = (f"(SELECT value FROM measurements m WHERE m.device_id = d.device_id AND m.metric = 'active_power' "
+                 f"AND m.time > now() - {STALE} ORDER BY m.time DESC LIMIT 1)")
+    energy_today = (f"(SELECT c.integral_wh / 1000.0 FROM energy_daily_check c WHERE c.device_id = d.device_id "
+                    f"AND c.day = (now() AT TIME ZONE '{TZ}')::date)")
+    d.add(table("Liczniki floty",
+                "Jeden wiersz na licznik (prawdziwe na górze). Źródło: „pomiar” (prawdziwy sprzęt) albo „SYMULACJA”. Stan: „Aktualne”, gdy ostatnia "
+                "próbka mocy jest młodsza niż próg ze zmiennej „Dane uznane za stare po”, inaczej „Brak danych”. Wiek odczytu: sekundy od ostatniej "
+                "próbki mocy (puste: brak próbki w ostatniej godzinie). Moc teraz: tylko gdy dane są aktualne (brak danych to nie zero). "
+                "Energia od północy (czas lokalny) z całki mocy, przy lukach dolna granica.",
+                [target(f"SELECT label AS \"Urządzenie\", src AS \"Źródło\", CASE WHEN last IS NULL OR now() - last > {STALE} THEN 'Brak danych' "
+                        "ELSE 'Aktualne' END AS \"Stan\", extract(epoch FROM now() - last) AS \"Wiek odczytu\", p AS \"Moc teraz\", "
+                        "e AS \"Energia od północy\" "
+                        f"FROM (SELECT d.source, {D_LABEL} AS label, CASE WHEN d.source = 'sim' THEN '{SIM_MARK}' ELSE 'pomiar' END AS src, "
+                        f"{last} AS last, {power_now} AS p, {energy_today} AS e FROM devices d WHERE {METERS}) f "
+                        "ORDER BY source = 'sim', label", "table")],
+                decimals=1,
+                overrides=[
+                    {"matcher": {"id": "byName", "options": "Źródło"}, "properties": [
+                        {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                        {"id": "mappings", "value": [{"type": "value", "options": {
+                            SIM_MARK: {"text": SIM_MARK, "color": "orange", "index": 0},
+                            "pomiar": {"text": "pomiar", "color": "green", "index": 1}}}]}]},
+                    {"matcher": {"id": "byName", "options": "Stan"}, "properties": [
+                        {"id": "custom.cellOptions", "value": {"type": "color-background"}},
+                        {"id": "mappings", "value": [{"type": "value", "options": {
+                            "Aktualne": {"text": "Aktualne", "color": "green", "index": 0},
+                            "Brak danych": {"text": "Brak danych", "color": "red", "index": 1}}}]}]},
+                    {"matcher": {"id": "byName", "options": "Wiek odczytu"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 0}]},
+                    {"matcher": {"id": "byName", "options": "Moc teraz"}, "properties": [{"id": "unit", "value": "watt"}]},
+                    {"matcher": {"id": "byName", "options": "Energia od północy"}, "properties": [{"id": "unit", "value": "kwatth"}, {"id": "decimals", "value": 2}]},
+                ]), 24, 7, new_row=True)
+    d.add(timeseries("Moc czynna – flota",
+                     "Średnia moc czynna [W] każdego licznika w kroku wykresu, z agregatu minutowego. Luki dłuższe niż 2,5 min przerywają linię "
+                     "(brak danych, nie zero).",
+                     [target(f"SELECT $__timeGroupAlias(e.bucket, $__interval), {D_LABEL} AS metric, "
+                             "sum(e.active_power_sum) / nullif(sum(e.active_power_n), 0) AS value FROM energy_1m e JOIN devices d USING (device_id) "
+                             f"WHERE $__timeFilter(e.bucket) AND {METERS} GROUP BY 1, 2 ORDER BY 1")],
+                     unit="watt", span_ms=150000, decimals=1), 24, 8, new_row=True)
+    hourly = timeseries("Energia na godzinę – flota",
+                        "Energia czynna [kWh] w każdej godzinie, słupki skumulowane na licznik (z agregatu godzinnego; godzina w toku niepełna). "
+                        "Z całki mocy: przy lukach dolna granica.",
+                        [target(f"SELECT e.bucket AS time, {D_LABEL} AS metric, e.active_power_sum * {D_POLL} / 3600000.0 AS value "
+                                f"FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND {METERS} ORDER BY 1")],
+                        unit="kwatth", bars=True, span_ms=9000000, decimals=2, min_=0)
+    hourly["fieldConfig"]["defaults"]["custom"]["stacking"] = {"mode": "normal", "group": "A"}
+    d.add(hourly, 12, 8, new_row=True)
+    d.add(_panel("barchart", "Udział w energii zakresu",
+                 "Energia czynna [kWh] każdego licznika w wybranym zakresie czasu (pełne godziny z agregatu godzinnego, z całki mocy).",
+                 [target(f"SELECT {D_LABEL} AS \"Urządzenie\", sum(e.active_power_sum * {D_POLL}) / 3600000.0 AS \"Energia [kWh]\" "
+                         f"FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND {METERS} "
+                         "GROUP BY 1 ORDER BY 2 DESC", "table")],
+                 unit="kwatth", decimals=2, min_=0, custom={"fillOpacity": 80},
+                 options={"orientation": "horizontal", "showValue": "always", "stacking": "none",
+                          "legend": {"showLegend": False}, "tooltip": {"mode": "single"}}), 12, 8)
+    d.add(state_timeline("Świeżość danych w czasie",
+                         "Dla każdego licznika i kroku osi (co najmniej 1 min): „Dane” – pomiar mocy przez co najmniej 95% kroku, „Dane niepełne” – część "
+                         "kroku bez pomiaru, „Brak danych” – żadnego pomiaru. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
+                         [target(coverage_states(METERS, D_LABEL, D_POLL, "energy_1m", "active_power_n"))], FRESH_MAP), 24, 8, new_row=True)
+    return d
+
+
+# --- 7. Pompa (E3-k6) --------------------------------------------------------------------------------------------------------
+
+PUMP = "device_id = '$pump'"
+TREND_DAYS = 90                  # własny zakres trendu drgań (S9, plan k6); 84 dni historii mieszczą się w nim
+TREND_MARKER = f"now() - interval '{TREND_DAYS} days'"
+RUN_NOTE = ("Minuta pracy (K4-D2): wszystkie próbki obrotów w minucie > 0; minuty postoju i częściowe (start, koniec zmiany) nie wchodzą "
+            "do drgań – drgania w postoju i rozruchu nie mówią o stanie łożyska.")
+
+
+def pump() -> Dash:
+    d = Dash("aip-pompa", "Pompa",
+             "Stan pompy z agregatu minutowego pump_1m: drgania, temperatura łożyska, prąd, przepływ, obroty. Trend drgań liczony tylko "
+             "z minut pracy. Bez prognozy – szacowanie dni do przekroczenia progu to etap 5.", "1m", "now-7d")
+    d.variables = [device_variable("pump", "Pompa", "pump")]
+    d.links = nav_links()
+    banner(d)
+    d.add(stat("Drgania (ost. godz. pracy)",
+               "Średnie drgania RMS [mm/s] z ostatnich 60 minut pracy (w ostatnich 7 dniach). " + RUN_NOTE,
+               [target(f"SELECT now() AS time, avg(vibration_avg) AS \"Drgania\" FROM (SELECT vibration_avg FROM pump_1m_calc WHERE {PUMP} "
+                       "AND running AND bucket > now() - interval '7 days' ORDER BY bucket DESC LIMIT 60) r", "table")],
+               unit="suffix: mm/s", decimals=2, color_mode="none"), 6, 4, new_row=True)
+    d.add(stat("Temperatura łożyska",
+               "Ostatnia średnia minutowa temperatury łożyska [°C] z ostatnich 10 minut.",
+               [target(f"SELECT bucket AS time, bearing_temperature_avg AS \"Temperatura\" FROM pump_1m_calc WHERE {PUMP} "
+                       "AND bucket > now() - interval '10 minutes' ORDER BY bucket")],
+               unit="celsius", decimals=1, color_mode="none"), 6, 4)
+    d.add(stat("Obroty",
+               "Ostatnia średnia minutowa obrotów [obr/min] z ostatnich 10 minut (0 = postój).",
+               [target(f"SELECT bucket AS time, speed_avg AS \"Obroty\" FROM pump_1m_calc WHERE {PUMP} "
+                       "AND bucket > now() - interval '10 minutes' ORDER BY bucket")],
+               unit="rpm", decimals=0, color_mode="none"), 6, 4)
+    d.add(stat("Minuty pracy dziś",
+               "Liczba minut pracy od północy (czas lokalny). " + RUN_NOTE,
+               [target(f"SELECT now() AS time, count(*) FILTER (WHERE running) AS \"Minuty pracy\" FROM pump_1m_calc WHERE {PUMP} "
+                       f"AND bucket >= {LOCAL_MIDNIGHT}", "table")], decimals=0, color_mode="none"), 6, 4)
+    trend = timeseries(f"Trend drgań z minut pracy (ostatnie {TREND_DAYS} dni)",
+                       f"Średnia dobowa drgań RMS [mm/s] tylko z minut pracy (doba lokalna) i liczba minut pracy w dobie (prawa oś, pokrycie). "
+                       f"Zakres: ostatnie {TREND_DAYS} dni liczone od teraz, niezależnie od zakresu pulpitu. Doby bez pracy (np. niedziele) są puste. "
+                       + RUN_NOTE,
+                       [target(f"SELECT time_bucket('1 day', bucket, '{TZ}') AS time, avg(vibration_avg) AS \"Drgania (średnia doby pracy)\", "
+                               f"count(*) AS \"Minuty pracy\" FROM pump_1m_calc WHERE {PUMP} AND running AND bucket >= {TREND_MARKER} "
+                               "GROUP BY 1 ORDER BY 1")],
+                       unit="suffix: mm/s", span_ms=90000000, decimals=2, min_=0,
+                       overrides=[{"matcher": {"id": "byName", "options": "Minuty pracy"}, "properties": [
+                           COVERAGE_AXIS, {"id": "unit", "value": "none"}, {"id": "custom.drawStyle", "value": "bars"},
+                           {"id": "custom.fillOpacity", "value": 25}, {"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}}]}])
+    trend["fieldConfig"]["defaults"]["custom"]["showPoints"] = "always"
+    d.add(trend, 24, 9, new_row=True)
+    d.add(timeseries("Drgania – minuty pracy",
+                     "Drgania RMS [mm/s] w kroku wykresu, średnia tylko z minut pracy; postoje i minuty częściowe są puste (przerwa w linii, nie zero). "
+                     + RUN_NOTE,
+                     [target(f"SELECT $__timeGroupAlias(bucket, $__interval), avg(vibration_avg) FILTER (WHERE running) AS \"Drgania (praca)\" "
+                             f"FROM pump_1m_calc WHERE $__timeFilter(bucket) AND {PUMP} GROUP BY 1 ORDER BY 1")],
+                     unit="suffix: mm/s", span_ms=150000, decimals=2, min_=0), 12, 8, new_row=True)
+    d.add(timeseries("Obroty",
+                     "Obroty [obr/min] w kroku wykresu, wszystkie minuty: 0 = postój. Pokazuje, kiedy pompa pracowała.",
+                     [target(f"SELECT $__timeGroupAlias(bucket, $__interval), avg(speed_avg) AS \"Obroty\" "
+                             f"FROM pump_1m_calc WHERE $__timeFilter(bucket) AND {PUMP} GROUP BY 1 ORDER BY 1")],
+                     unit="rpm", span_ms=150000, decimals=0, min_=0), 12, 8)
+    for title, column, unit, desc in (
+            ("Temperatura łożyska", "bearing_temperature_avg", "celsius", "Temperatura łożyska [°C], średnia w kroku wykresu, wszystkie minuty."),
+            ("Prąd silnika", "motor_current_avg", "amp", "Prąd silnika [A], średnia w kroku wykresu, wszystkie minuty (0 = postój)."),
+            ("Przepływ", "flow_avg", "suffix: m³/h", "Przepływ [m³/h], średnia w kroku wykresu, wszystkie minuty (0 = postój).")):
+        d.add(timeseries(title, desc + " Luki dłuższe niż 2,5 min przerywają linię (brak danych, nie zero).",
+                         [target(f"SELECT $__timeGroupAlias(bucket, $__interval), avg({column}) AS \"{title}\" "
+                                 f"FROM pump_1m_calc WHERE $__timeFilter(bucket) AND {PUMP} GROUP BY 1 ORDER BY 1")],
+                         unit=unit, span_ms=150000, decimals=1), 8, 7, new_row=(column == "bearing_temperature_avg"))
+    share = timeseries("Udział minut pracy na godzinę",
+                       "Część minut każdej godziny, które były minutami pracy (0–100%). " + RUN_NOTE,
+                       [target(f"SELECT time_bucket('1 hour', bucket) AS time, avg(running::int) AS \"Udział minut pracy\" "
+                               f"FROM pump_1m_calc WHERE $__timeFilter(bucket) AND {PUMP} GROUP BY 1 ORDER BY 1")],
+                       unit="percentunit", bars=True, span_ms=9000000, decimals=0, min_=0, max_=1)
+    d.add(share, 24, 6, new_row=True)
+    return d
+
+
+DASHBOARDS = {"przeglad": overview, "na-zywo": live, "jakosc": quality, "energia": energy, "diagnostyka": diagnostics,
+              "flota": fleet, "pompa": pump}
 
 
 def render() -> dict[str, str]:

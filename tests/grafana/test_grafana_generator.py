@@ -1,6 +1,7 @@
 """Generator dashboardów (G7-b): zgodność JSON w repo, kody statusów z dokumentu, zasada 8, opisy paneli."""
 from __future__ import annotations
 
+import json
 import re
 
 from collector.status import ERROR_CODE_NAMES, LinkStatus, MeterStatus
@@ -15,12 +16,14 @@ def test_json_in_repo_equals_generator_output():
         assert (generator.OUT / f"{name}.json").read_text(encoding="utf-8") == text, f"{name}.json różni się od generatora"
 
 
-def test_five_dashboards_with_stable_uids_and_a_device_variable():
+def test_seven_dashboards_with_stable_uids_and_device_variables():
     dashes = dashboards()
-    assert {d["uid"] for d in dashes.values()} == {"aip-przeglad", "aip-na-zywo", "aip-jakosc", "aip-energia", "aip-diagnostyka"}
-    for dash in dashes.values():
+    assert {d["uid"] for d in dashes.values()} == {"aip-przeglad", "aip-na-zywo", "aip-jakosc", "aip-energia", "aip-diagnostyka",
+                                                   "aip-flota", "aip-pompa"}
+    for name, dash in dashes.items():
         names = [v["name"] for v in dash["templating"]["list"]]
-        assert names[0] == "device"
+        assert names[0] == {"flota": "stale_s", "pompa": "pump"}.get(name, "device"), name
+        assert len(dash["links"]) == 7, name
         assert dash["timezone"] == "Europe/Warsaw"
         assert dash["annotations"]["list"], "brak adnotacji okien testów i przerw"
 
@@ -345,3 +348,65 @@ def test_profile_table_fits_all_seven_days_without_horizontal_scrolling():
     assert custom["minWidth"] <= 60 and custom["minWidth"] * 8 <= 480
     sql = panel["targets"][0]["rawSql"]
     assert all(f'AS "{name}"' in sql for name in ("Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Niedz"))
+
+
+# --- E3-k6: Flota i Pompa ------------------------------------------------------------------------------------------------------
+
+# Odcisk paneli, zmiennych (bez $device) i adnotacji dashboardów etapu 2 przed k6 (8228332): k6 zmienia w nich tylko etykietę
+# listy $device i linki nawigacji (K6-U2), więc zapytania i wyniki dla Findera i PLC są bez zmian.
+STAGE2_FINGERPRINTS = {"diagnostyka": "59a7368a9320a257", "energia": "6ac7c100119b5267", "jakosc": "da5fcdfc957c9cf5",
+                       "na-zywo": "61940a61fe0b3388", "przeglad": "6f944b96e088e60e"}
+
+
+def test_stage2_dashboards_change_only_the_device_label_and_links():
+    import hashlib
+    import json
+
+    generator = load_generator()
+    for name, expected in STAGE2_FINGERPRINTS.items():
+        dash = dashboards()[name]
+        rest = [v for v in dash["templating"]["list"] if v["name"] != "device"]
+        digest = hashlib.sha256(json.dumps([dash["panels"], rest, dash["annotations"]], sort_keys=True, ensure_ascii=False)
+                                .encode()).hexdigest()[:16]
+        assert digest == expected, f"{name}: zmieniły się panele etapu 2"
+        device = dash["templating"]["list"][0]
+        assert device["query"].startswith("SELECT device_id AS __value, " + generator.SIM_LABEL + " AS __text"), name
+
+
+def test_simulation_mark_comes_from_the_source_column_not_from_device_names():
+    """S10, zasada 3: dopisek SYMULACJA tylko z devices.source; generator nie zna żadnych identyfikatorów ani nazw urządzeń."""
+    generator = load_generator()
+    text = (generator.ROOT / "generate.py").read_text(encoding="utf-8")
+    for word in ("sim_", "finder", "Pasteryzator", "P-101", "Pompa P"):
+        assert word not in text, word
+    assert "source = 'sim'" in generator.SIM_LABEL
+    for name in ("flota", "pompa"):
+        dash = dashboards()[name]
+        assert dash["panels"][0]["type"] == "text" and generator.SIM_MARK in dash["panels"][0]["options"]["content"]
+    fleet = dashboards()["flota"]
+    for title, target in targets(fleet):
+        if "metric" in target["rawSql"] or "Urządzenie" in target["rawSql"]:
+            assert "d.source = 'sim'" in target["rawSql"], title
+
+
+def test_pump_panels_use_the_minute_aggregate_and_running_minutes_for_vibration():
+    generator = load_generator()
+    pump = dashboards()["pompa"]
+    for title, target in targets(pump):
+        sql = target["rawSql"]
+        assert "FROM pump_1m_calc" in sql and "measurements" not in sql, title
+        assert "'$pump'" in sql, title
+        if "vibration" in sql:
+            assert "running" in sql, f"{title}: drgania tylko z minut pracy (K4-D2)"
+    trend = next(p for p in pump["panels"] if p["title"].startswith("Trend drgań"))
+    sql = trend["targets"][0]["rawSql"]
+    assert generator.TREND_MARKER in sql and "$__timeFilter" not in sql and "niezależnie od zakresu pulpitu" in trend["description"]
+    for panel in pump["panels"]:
+        assert not re.search(r"prognoz|dni do|threshold", json.dumps(panel["fieldConfig"]) + panel["title"], re.I) or panel["type"] == "text"
+
+
+def test_fleet_long_ranges_read_aggregates():
+    for title, target in targets(dashboards()["flota"]):
+        sql = target["rawSql"]
+        if "FROM measurements" in sql:
+            assert "interval '1 hour'" in sql and "$__timeFilter" not in sql, f"{title}: surowe dane tylko z ostatniej godziny"

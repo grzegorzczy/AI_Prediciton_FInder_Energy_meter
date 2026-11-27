@@ -8,7 +8,8 @@ import pytest
 from grafana_support import RANGES, dashboards, ds_query, effective_seconds, expand_vars, load_generator, panel_targets, targets
 
 M1, M2 = "finder_7m24_1", "finder_7m24_2"
-DASHES = dashboards()
+# Dashboardy etapu 2 (dane Findera); „Flota” i „Pompa” (E3-k6) mają własne testy na danych z historii symulatora (slow).
+DASHES = {name: dash for name, dash in dashboards().items() if name not in ("flota", "pompa")}
 
 # Panele, które z założenia są puste dla danego zakresu (ograniczenie zakresu zapisane w SQL i w opisie panelu).
 EXPECT_EMPTY = {

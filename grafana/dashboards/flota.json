@@ -1,0 +1,591 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "aip-timescaledb"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.6)",
+        "name": "Okna testów i przerw",
+        "target": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT start_time AS time, end_time AS \"timeEnd\", kind AS tags, description AS text FROM data_windows WHERE start_time <= $__timeTo() AND end_time >= $__timeFrom() ORDER BY start_time",
+          "refId": "Anno"
+        }
+      }
+    ]
+  },
+  "description": "Wszystkie liczniki energii naraz: prawdziwe (pomiar przez PLC) i symulowane (dopisek SYMULACJA). Stan = świeżość danych (nie praca/postój maszyny – to etap 4). Moc i energia z agregatów minutowych i godzinnych.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Przegląd",
+      "type": "link",
+      "url": "/d/aip-przeglad"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Licznik na żywo",
+      "type": "link",
+      "url": "/d/aip-na-zywo"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Jakość energii",
+      "type": "link",
+      "url": "/d/aip-jakosc"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Energia i profil",
+      "type": "link",
+      "url": "/d/aip-energia"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Stan i diagnostyka",
+      "type": "link",
+      "url": "/d/aip-diagnostyka"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Flota",
+      "type": "link",
+      "url": "/d/aip-flota"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Pompa",
+      "type": "link",
+      "url": "/d/aip-pompa"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Objaśnienie znacznika SYMULACJA (S10).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "**Urządzenia oznaczone „SYMULACJA” pokazują dane symulowane** (`source = sim`: wirtualne liczniki i pompa z symulatora, nie pomiary z maszyn). Urządzenia bez dopisku to pomiary prawdziwe.",
+        "mode": "markdown"
+      },
+      "targets": [],
+      "title": "Dane symulowane",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Jeden wiersz na licznik (prawdziwe na górze). Źródło: „pomiar” (prawdziwy sprzęt) albo „SYMULACJA”. Stan: „Aktualne”, gdy ostatnia próbka mocy jest młodsza niż próg ze zmiennej „Dane uznane za stare po”, inaczej „Brak danych”. Wiek odczytu: sekundy od ostatniej próbki mocy (puste: brak próbki w ostatniej godzinie). Moc teraz: tylko gdy dane są aktualne (brak danych to nie zero). Energia od północy (czas lokalny) z całki mocy, przy lukach dolna granica.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": ""
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Źródło"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "SYMULACJA": {
+                        "color": "orange",
+                        "index": 0,
+                        "text": "SYMULACJA"
+                      },
+                      "pomiar": {
+                        "color": "green",
+                        "index": 1,
+                        "text": "pomiar"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stan"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Aktualne": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "Aktualne"
+                      },
+                      "Brak danych": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "Brak danych"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wiek odczytu"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Moc teraz"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Energia od północy"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kwatth"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      },
+      "id": 2,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT label AS \"Urządzenie\", src AS \"Źródło\", CASE WHEN last IS NULL OR now() - last > make_interval(secs => $stale_s) THEN 'Brak danych' ELSE 'Aktualne' END AS \"Stan\", extract(epoch FROM now() - last) AS \"Wiek odczytu\", p AS \"Moc teraz\", e AS \"Energia od północy\" FROM (SELECT d.source, d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS label, CASE WHEN d.source = 'sim' THEN 'SYMULACJA' ELSE 'pomiar' END AS src, (SELECT max(time) FROM measurements m WHERE m.device_id = d.device_id AND m.metric = 'active_power' AND m.time > now() - interval '1 hour') AS last, (SELECT value FROM measurements m WHERE m.device_id = d.device_id AND m.metric = 'active_power' AND m.time > now() - make_interval(secs => $stale_s) ORDER BY m.time DESC LIMIT 1) AS p, (SELECT c.integral_wh / 1000.0 FROM energy_daily_check c WHERE c.device_id = d.device_id AND c.day = (now() AT TIME ZONE 'Europe/Warsaw')::date) AS e FROM devices d WHERE d.kind = 'energy_meter' AND d.enabled) f ORDER BY source = 'sim', label",
+          "refId": "A"
+        }
+      ],
+      "title": "Liczniki floty",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Średnia moc czynna [W] każdego licznika w kroku wykresu, z agregatu minutowego. Luki dłuższe niż 2,5 min przerywają linię (brak danych, nie zero).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 150000
+          },
+          "decimals": 1,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(e.bucket, $__interval), d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS metric, sum(e.active_power_sum) / nullif(sum(e.active_power_n), 0) AS value FROM energy_1m e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND d.kind = 'energy_meter' AND d.enabled GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Moc czynna – flota",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia czynna [kWh] w każdej godzinie, słupki skumulowane na licznik (z agregatu godzinnego; godzina w toku niepełna). Z całki mocy: przy lukach dolna granica.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "barAlignment": 1,
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": 9000000,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          },
+          "decimals": 2,
+          "min": 0,
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT e.bucket AS time, d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS metric, e.active_power_sum * (d.meta ->> 'poll_interval_s')::float8 / 3600000.0 AS value FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND d.kind = 'energy_meter' AND d.enabled ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Energia na godzinę – flota",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Energia czynna [kWh] każdego licznika w wybranym zakresie czasu (pełne godziny z agregatu godzinnego, z całki mocy).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 80
+          },
+          "decimals": 2,
+          "min": 0,
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS \"Urządzenie\", sum(e.active_power_sum * (d.meta ->> 'poll_interval_s')::float8) / 3600000.0 AS \"Energia [kWh]\" FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND d.kind = 'energy_meter' AND d.enabled GROUP BY 1 ORDER BY 2 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Udział w energii zakresu",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "aip-timescaledb"
+      },
+      "description": "Dla każdego licznika i kroku osi (co najmniej 1 min): „Dane” – pomiar mocy przez co najmniej 95% kroku, „Dane niepełne” – część kroku bez pomiaru, „Brak danych” – żadnego pomiaru. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "Brak danych"
+                },
+                "1": {
+                  "color": "orange",
+                  "index": 1,
+                  "text": "Dane niepełne"
+                },
+                "2": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "Dane"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "unit": ""
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 6,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.8,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "aip-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum(active_power_n) AS n FROM energy_1m, s WHERE $__timeFilter(bucket) GROUP BY 1, 2) SELECT b.t AS time, d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS metric, CASE WHEN coalesce(a.n, 0) * (d.meta ->> 'poll_interval_s')::float8 >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 WHEN coalesce(a.n, 0) > 0 THEN 1 ELSE 0 END AS value FROM b CROSS JOIN s CROSS JOIN devices d LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id WHERE d.kind = 'energy_meter' AND d.enabled AND b.t <= now() ORDER BY 1, 2",
+          "refId": "A"
+        }
+      ],
+      "title": "Świeżość danych w czasie",
+      "type": "state-timeline"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "AI Predykcja"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "10",
+          "value": "10"
+        },
+        "hide": 0,
+        "label": "Dane uznane za stare po [s]",
+        "name": "stale_s",
+        "options": [
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          }
+        ],
+        "query": "10",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "Europe/Warsaw",
+  "title": "Flota",
+  "uid": "aip-flota",
+  "version": 1
+}

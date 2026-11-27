@@ -20,4 +20,5 @@ cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 $COMPOSE build pytest
-$COMPOSE run --rm -T pytest pytest -c /repo/pytest.ini "$@"
+# AIP_SLOW_PANELS=1: także panele „Flota” i „Pompa” na danych z historii symulatora (K6-D4, ok. 10 min)
+$COMPOSE run --rm -T -e AIP_SLOW_PANELS="${AIP_SLOW_PANELS:-}" pytest pytest -c /repo/pytest.ini "$@"

@@ -76,6 +76,26 @@
       "title": "Stan i diagnostyka",
       "type": "link",
       "url": "/d/aip-diagnostyka"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Flota",
+      "type": "link",
+      "url": "/d/aip-flota"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Pompa",
+      "type": "link",
+      "url": "/d/aip-pompa"
     }
   ],
   "panels": [
@@ -969,13 +989,13 @@
           "type": "grafana-postgresql-datasource",
           "uid": "aip-timescaledb"
         },
-        "definition": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "definition": "SELECT device_id AS __value, name || CASE WHEN source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
         "hide": 0,
         "includeAll": false,
         "label": "Licznik",
         "multi": false,
         "name": "device",
-        "query": "SELECT device_id AS __value, name AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
+        "query": "SELECT device_id AS __value, name || CASE WHEN source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS __text FROM devices WHERE kind = 'energy_meter' AND enabled ORDER BY 1",
         "refresh": 1,
         "sort": 1,
         "type": "query"
