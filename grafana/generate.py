@@ -769,16 +769,19 @@ def banner(d: Dash) -> None:
 def coverage_states(device_filter: str, label: str, poll: str, source: str, n_col: str) -> str:
     """Oś stanów świeżości/pokrycia: kubełki co max($__interval, 1 min) wygenerowane w SQL (brak wiersza w agregacie = „Brak danych”,
     a nie przerwa w osi), na urządzenie. Kubełek w toku liczony tylko z upłyniętej części. Kubełki w całości przed pierwszym odczytem
-    urządzenia nie mają stanu (NULL, przezroczyste; K6R-V2): urządzenie, którego jeszcze nie było, nie jest awarią."""
+    urządzenia nie mają stanu (NULL, przezroczyste; K6R-V2): urządzenie, którego jeszcze nie było, nie jest awarią. Pierwszy odczyt
+    liczony raz na urządzenie (CTE `f`), nie w każdym wierszu osi."""
     return (f"WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), "
             f"b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), "
             f"a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum({n_col}) AS n FROM {source}, s "
-            f"WHERE $__timeFilter(bucket) GROUP BY 1, 2) "
+            f"WHERE $__timeFilter(bucket) GROUP BY 1, 2), "
+            f"f AS MATERIALIZED (SELECT d.device_id, (SELECT min(x.bucket) FROM {source} x WHERE x.device_id = d.device_id) AS first "
+            f"FROM devices d WHERE {device_filter}) "
             f"SELECT b.t AS time, {label} AS metric, CASE "
-            f"WHEN b.t + s.step <= (SELECT min(f.bucket) FROM {source} f WHERE f.device_id = d.device_id) THEN NULL "
+            f"WHEN f.first IS NULL OR b.t + s.step <= f.first THEN NULL "
             f"WHEN coalesce(a.n, 0) * {poll} >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 "
             f"WHEN coalesce(a.n, 0) > 0 THEN 1 ELSE 0 END AS value "
-            f"FROM b CROSS JOIN s CROSS JOIN devices d LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id "
+            f"FROM b CROSS JOIN s CROSS JOIN devices d JOIN f ON f.device_id = d.device_id LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id "
             f"WHERE {device_filter} AND b.t <= now() ORDER BY 1, 2")
 
 
