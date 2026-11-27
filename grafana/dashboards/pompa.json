@@ -232,7 +232,7 @@
           "refId": "A"
         }
       ],
-      "title": "Temperatura łożyska",
+      "title": "Temperatura łożyska teraz",
       "type": "stat"
     },
     {
@@ -285,7 +285,7 @@
           "refId": "A"
         }
       ],
-      "title": "Obroty",
+      "title": "Obroty teraz",
       "type": "stat"
     },
     {

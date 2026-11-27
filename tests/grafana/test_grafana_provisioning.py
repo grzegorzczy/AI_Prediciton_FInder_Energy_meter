@@ -64,7 +64,9 @@ def test_device_variable_query_in_dashboards_is_the_same(grafana_data):
     """Lista urządzeń: wartość device_id, etykieta z dopiskiem SYMULACJA z devices.source (E3-k6, S10)."""
     label = "name || CASE WHEN source = 'sim' THEN ' (SYMULACJA)' ELSE '' END"
     for name, dash in dashboards().items():
-        variable = next(v for v in dash["templating"]["list"] if v["type"] == "query")
+        variable = next((v for v in dash["templating"]["list"] if v["type"] == "query"), None)
+        if variable is None:                                  # „Flota”: wszystkie liczniki naraz, bez listy urządzeń
+            continue
         assert variable["query"].startswith(f"SELECT device_id AS __value, {label} AS __text FROM devices"), name
 
 

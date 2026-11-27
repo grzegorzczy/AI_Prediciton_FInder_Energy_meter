@@ -865,12 +865,12 @@ def pump() -> Dash:
                [target(f"SELECT now() AS time, avg(vibration_avg) AS \"Drgania\" FROM (SELECT vibration_avg FROM pump_1m_calc WHERE {PUMP} "
                        "AND running AND bucket > now() - interval '7 days' ORDER BY bucket DESC LIMIT 60) r", "table")],
                unit="suffix: mm/s", decimals=2, color_mode="none"), 6, 4, new_row=True)
-    d.add(stat("Temperatura łożyska",
+    d.add(stat("Temperatura łożyska teraz",
                "Ostatnia średnia minutowa temperatury łożyska [°C] z ostatnich 10 minut.",
                [target(f"SELECT bucket AS time, bearing_temperature_avg AS \"Temperatura\" FROM pump_1m_calc WHERE {PUMP} "
                        "AND bucket > now() - interval '10 minutes' ORDER BY bucket")],
                unit="celsius", decimals=1, color_mode="none"), 6, 4)
-    d.add(stat("Obroty",
+    d.add(stat("Obroty teraz",
                "Ostatnia średnia minutowa obrotów [obr/min] z ostatnich 10 minut (0 = postój).",
                [target(f"SELECT bucket AS time, speed_avg AS \"Obroty\" FROM pump_1m_calc WHERE {PUMP} "
                        "AND bucket > now() - interval '10 minutes' ORDER BY bucket")],

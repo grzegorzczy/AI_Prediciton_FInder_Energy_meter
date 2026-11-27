@@ -21,7 +21,7 @@ SIM_METERS = {"sim_pasteryzator", "sim_chlodnia", "sim_mieszalnik", "sim_pakowac
 ALL_RANGES = {**RANGES, "90d": 90 * 86400}
 MAX_QUERY_S = 3.0
 # Kafelki „teraz” (ostatnie 10 min): w teście nie ma danych na żywo, tylko historia kończąca się przy ładowaniu.
-MAY_BE_EMPTY = {"Temperatura łożyska", "Obroty"}
+MAY_BE_EMPTY = {"Temperatura łożyska teraz", "Obroty teraz"}
 TIMES: dict[tuple[str, str], float] = {}
 
 
