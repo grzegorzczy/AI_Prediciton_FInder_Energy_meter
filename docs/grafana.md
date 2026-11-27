@@ -1,11 +1,11 @@
 # Grafana: ściąga dla użytkownika i opis dashboardów
 
 Grafana pokazuje dane, które zbieramy z PLC i licznika Finder 7M.24. Działa lokalnie (bez internetu), w sieci biurowej pod adresem
-**`http://192.168.0.213:3000`** (HTTP, bez szyfrowania: ruch i hasło idą jawnie po sieci lokalnej; szyfrowanie dojdzie w etapie 7).
+**`http://192.168.0.215:3000`** (HTTP, bez szyfrowania: ruch i hasło idą jawnie po sieci lokalnej; szyfrowanie dojdzie w etapie 7).
 
 ## Jak się zalogować
 
-1. Otwórz `http://192.168.0.213:3000` w przeglądarce na laptopie (ta sama sieć co komputer przemysłowy).
+1. Otwórz `http://192.168.0.215:3000` w przeglądarce na laptopie (ta sama sieć co komputer przemysłowy).
 2. Użytkownik i hasło administratora to `GF_SECURITY_ADMIN_USER` i `GF_SECURITY_ADMIN_PASSWORD` z pliku `.env` (kopia na laptopie; plik nie trafia do repozytorium).
 3. **Hasła nie zmieniamy w interfejsie**: źródłem jest `.env`, a wartość z `.env` działa tylko przy pierwszym utworzeniu bazy Grafany.
 4. Brak dostępu anonimowego i rejestracji. Strona startowa to „Przegląd”.

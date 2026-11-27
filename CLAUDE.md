@@ -8,7 +8,8 @@ Wszystko działa lokalnie, bez internetu. Chmura jest opcją, domyślnie wyłąc
 
 ## Sprzęt
 - Komputer przemysłowy: i5-10210U, 16 GB RAM (2x8 GB DDR4), dysk NVMe 1 TB, Ubuntu, bez GPU.
-- PLC: JUMO variTRON 300 (CODESYS), serwer Modbus TCP na porcie 502.
+  Host `jumo-ipc`, adres 192.168.0.215 (port sieciowy `enp2s0`, łącze 100 Mb/s – znana cecha, od 27.11.2026).
+- PLC: JUMO variTRON 300 (CODESYS), serwer Modbus TCP na porcie 502, adres 192.168.0.246.
 - Licznik Finder 7M.24.8.230.0210, Modbus RTU po RS485, podpięty do PLC.
   Komputer nie rozmawia z licznikiem bezpośrednio.
 - Czujniki drgań i temperatury: na razie symulowane.

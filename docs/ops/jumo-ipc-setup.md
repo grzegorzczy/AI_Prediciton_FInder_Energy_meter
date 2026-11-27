@@ -1,12 +1,37 @@
 # Przygotowanie komputera `jumo-ipc` (jednorazowo)
 
 Instrukcja z kroku e2-k1 (23.11.2026). Polecenia są podane w postaci do uruchomienia **na komputerze**
-(bash). Z laptopa przez `ssh jumo@192.168.0.213 "<polecenie>"` wymagają cytowania dla cmd
+(bash). Z laptopa przez `ssh jumo@192.168.0.215 "<polecenie>"` wymagają cytowania dla cmd
 (patrz „Uruchamianie z laptopa”). Dokument służy też jako baza instalatora (etap 7).
 
 Komputer: Ubuntu 22.04 („jammy”), użytkownik `jumo`, 16 GB RAM, NVMe 1 TB. Na tym samym
 komputerze działa JUMO smartWARE (7 kontenerów Dockera, porty 80/443). **Nie ruszamy smartWARE,
 demona Dockera, strefy czasowej (Europe/Berlin) ani konfiguracji NTP.**
+
+## Sieć (od 27.11.2026, E3-k7a)
+
+| Element | Wartość |
+| --- | --- |
+| IPC `jumo-ipc` | **192.168.0.215**, port `enp2s0` (profil NM „Wired connection 2”), MAC `04:2b:58:12:f7:a2`, adres z DHCP |
+| PLC | **192.168.0.246** (Modbus TCP 502) |
+| Brama | 192.168.0.1 |
+| Łącze | **100 Mb/s (znana cecha, zaakceptowana)**: karta jest gigabitowa, kabla i portu switcha nie testujemy; dla 20 wierszy/s i Grafany wystarcza z dużym zapasem |
+| Drugi port `enp1s0` | nieużywany (do 27.11 20:49 tam był kabel i adres .213) |
+
+Dostęp z laptopa spoza sieci zakładu: przez Tailscale i komputer w zakładzie udostępniający podsieć 192.168.0.0/24
+(nie przez IPC – IPC nie ma Tailscale ani dostępu z internetu). Przerwa po tej drodze **nie oznacza** przerwy sieci IPC:
+o stanie IPC świadczą dane real w bazie i monitor poniżej.
+
+**Monitor sieci** (`docs/ops/net-monitor.sh`, K7-D1): cron co minutę, bez `sudo`, ping do bramy i PLC (bez połączeń do Modbus,
+K7-D2), stan i prędkość łącza, adres, MAC bramy, zdarzenia „Link is Down/Up”. Log `~/aip-net/net-YYYYMMDD.log` (ok. 0,3 MB/dobę,
+14 dni). Instalacja w nagłówku skryptu. Przegląd przerw:
+
+```bash
+grep -hv "gw=0/3 .*plc=0/3 .*link_events=0" ~/aip-net/net-*.log | tail
+```
+
+**Konflikt adresu** (inne urządzenie na adresie IPC) – bez `sudo` niewykrywalny (brak `arping`, gniazda surowe wymagają roota).
+Sprawdzenie ręczne: `sudo python3 docs/ops/arp-probe.py enp2s0 192.168.0.215` (sonda ARP, nic nie zmienia).
 
 ## Zasady (obowiązują cały czas)
 
@@ -128,10 +153,10 @@ apt-mark showhold
 
 ## Uruchamianie z laptopa (cmd lub Git Bash)
 
-- cmd: `ssh jumo@192.168.0.213 "<polecenie>"`; wewnątrz bez podwójnych cudzysłowów
-  (`--format 'table {{.Names}}\t…'`); z sudo `ssh -t jumo@192.168.0.213 "sudo …"`.
+- cmd: `ssh jumo@192.168.0.215 "<polecenie>"`; wewnątrz bez podwójnych cudzysłowów
+  (`--format 'table {{.Names}}\t…'`); z sudo `ssh -t jumo@192.168.0.215 "sudo …"`.
 - PowerShell 5.1 zniekształca cudzysłowy przy przekazaniu do `ssh`; wolisz Git Bash z heredoc:
-  `ssh jumo@192.168.0.213 bash -s <<'EOF' … EOF`.
+  `ssh jumo@192.168.0.215 bash -s <<'EOF' … EOF`.
 - W skrypcie `bash -s` **nie wywołuj `ssh` bez `-n`**: zagnieżdżony `ssh` czyta resztę skryptu ze
   standardowego wejścia i przerywa wykonanie.
 

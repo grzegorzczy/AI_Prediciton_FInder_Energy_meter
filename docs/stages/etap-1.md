@@ -68,7 +68,7 @@ Licencje Modbus na variTRON (Web Cockpit → License management):
 
 ## Checklista akceptacji (Grzegorz, na sprzęcie)
 
-Polecenia `mbpoll` z laptopa w cmd: `ssh jumo@192.168.0.213 "<polecenie>"`.
+Polecenia `mbpoll` z laptopa w cmd: `ssh jumo@192.168.0.215 "<polecenie>"`.
 
 | # | Krok | Oczekiwane | Stan |
 | --- | --- | --- | --- |
