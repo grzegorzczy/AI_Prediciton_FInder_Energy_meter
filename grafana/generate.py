@@ -766,17 +766,20 @@ def banner(d: Dash) -> None:
     d.add(panel, 24, 3, new_row=True)
 
 
-def coverage_states(device_filter: str, label: str, poll: str, source: str, n_col: str) -> str:
+def coverage_states(device_filter: str, label: str, poll: str, source: str, n_col: str, hourly: str) -> str:
     """Oś stanów świeżości/pokrycia: kubełki co max($__interval, 1 min) wygenerowane w SQL (brak wiersza w agregacie = „Brak danych”,
     a nie przerwa w osi), na urządzenie. Kubełek w toku liczony tylko z upłyniętej części. Kubełki w całości przed pierwszym odczytem
     urządzenia nie mają stanu (NULL, przezroczyste; K6R-V2): urządzenie, którego jeszcze nie było, nie jest awarią. Pierwszy odczyt
-    liczony raz na urządzenie (CTE `f`), nie w każdym wierszu osi."""
+    raz na urządzenie (CTE `f`): godzina z małego agregatu godzinnego (`min` na agregacie minutowym trwał sekundy), a gdy wypada
+    w zakresie, dokładny kubełek z danych zakresu (`a`)."""
     return (f"WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), "
             f"b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), "
             f"a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum({n_col}) AS n FROM {source}, s "
             f"WHERE $__timeFilter(bucket) GROUP BY 1, 2), "
-            f"f AS MATERIALIZED (SELECT d.device_id, (SELECT min(x.bucket) FROM {source} x WHERE x.device_id = d.device_id) AS first "
-            f"FROM devices d WHERE {device_filter}) "
+            f"h AS MATERIALIZED (SELECT d.device_id, (SELECT min(x.bucket) FROM {hourly} x WHERE x.device_id = d.device_id) AS first_h "
+            f"FROM devices d WHERE {device_filter}), "
+            f"f AS (SELECT h.device_id, CASE WHEN h.first_h >= $__timeFrom()::timestamptz - interval '1 hour' "
+            f"THEN (SELECT min(a.t) FROM a WHERE a.device_id = h.device_id) ELSE h.first_h END AS first FROM h) "
             f"SELECT b.t AS time, {label} AS metric, CASE "
             f"WHEN f.first IS NULL OR b.t + s.step <= f.first THEN NULL "
             f"WHEN coalesce(a.n, 0) * {poll} >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 "
@@ -851,7 +854,7 @@ def fleet() -> Dash:
     d.add(state_timeline("Świeżość danych w czasie",
                          "Dla każdego licznika i kroku osi (co najmniej 1 min): „Dane” – pomiar mocy przez co najmniej 95% kroku, „Dane niepełne” – część "
                          "kroku bez pomiaru, „Brak danych” – żadnego pomiaru po pierwszym odczycie; przed pierwszym odczytem licznika oś jest pusta. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
-                         [target(coverage_states(METERS, D_AXIS_LABEL, D_POLL, "energy_1m", "active_power_n"))], FRESH_MAP), 24, 8, new_row=True)
+                         [target(coverage_states(METERS, D_AXIS_LABEL, D_POLL, "energy_1m", "active_power_n", "energy_1h"))], FRESH_MAP), 24, 8, new_row=True)
     return d
 
 
