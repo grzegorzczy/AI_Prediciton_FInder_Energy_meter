@@ -37,3 +37,5 @@ def test_memory_limits_sum_fits_the_budget():
     # usługi z profilem (np. simulator-tools, E3-k5) uruchamia się jednorazowo, nie działają stale
     total = sum(mib(svc["mem_limit"]) for svc in services().values() if not svc.get("profiles"))
     assert total <= 2560, total                    # 16 GB komputera, smartWARE ok. 0,4-1 GB: limity razem poniżej 2,5 GiB
+    tools = sum(mib(svc["mem_limit"]) for svc in services().values() if svc.get("profiles"))
+    assert total + tools <= 2560, total + tools    # także w czasie jednorazowego wgrywania historii (E3-k5)

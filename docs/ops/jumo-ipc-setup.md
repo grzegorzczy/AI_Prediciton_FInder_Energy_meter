@@ -413,37 +413,48 @@ przy niezgodności z modelem (klucz z `MODEL_VERSION` i parametrami, kontrola os
 Narzędzie `python -m simulator.backfill` w jednorazowej usłudze `simulator-tools` (profil `tools`, K5-D1): ten sam obraz,
 config, konto MQTT i pamięć sum dobowych co `simulator` (wspólny wolumen, K5-U4), plus odczyt bazy kontem **`app_reader`**
 (tylko do odczytu, `statement_timeout` 10 s). Usługa na żywo nie ma dostępu do bazy. Publikacja QoS 1, okno w locie 100
-(K5-D2), bez sufitu tempa. Ponieważ PUBACK wysyła broker, a nie ingest, narzędzie dodatkowo idzie **porcjami 5 min czasu
-modelu** i przed kolejną porcją czeka, aż ostatni wiersz poprzedniej jest w bazie – kolejka brokera dla ingestu (wspólna
-z danymi prawdziwymi) nie przekracza jednej porcji (ok. 7 200 wiadomości przy limicie 80 000).
+(K5-D2), bez sufitu tempa. Każda doba zakresu jest najpierw sprawdzana w bazie; wysyłane są tylko niepełne minuty urządzeń,
+więc wgranie, wznowienie i uzupełnianie luk to ten sam przebieg. Ponieważ PUBACK wysyła broker, a nie ingest, narzędzie idzie
+**porcjami po 7 200 wiadomości** i przed kolejną porcją czeka, aż ostatnia wysłana minuta jest w bazie kompletna – kolejka
+brokera dla ingestu (wspólna z danymi prawdziwymi, limit 80 000) nie przekracza jednej porcji. `--from`/`--to` w pełnych
+minutach. Kody wyjścia: 0 – gotowe; 1 – przerwane (broker, baza, brak zapisu przez 10 min) albo zostały luki po
+`--fill-gaps`; 2 – błąd argumentów lub configu.
 
 Kolejność w k7 (po ustawieniu dat w `devices.yaml` i starcie symulatora na żywo; `T0` = chwila startu trybu na żywo,
-pełna minuta, z logu symulatora):
+pełna minuta, z logu symulatora; polecenia z `/home/jumo/ai-predykcja`):
 
-1. **Miejsce na dysku:** `df -h /var/lib/docker` – wolne co najmniej 3× prognozy (raport k5: przyrost bazy na dobę liczników
-   z pilotażu × 14 + WAL), czyli ok. 6 GB.
-2. **Pilotaż 1 doby** (ostatnia doba przed `T0`), w dzień, z obserwacją:
+1. **Miejsce na dysku:** `df -h /var/lib/docker` – wolne co najmniej 3× prognozy z pilotażu k5 (przyrost bazy na dobę
+   liczników × 14 + pompa + WAL; wartość w `docs/handoff/e3-k5-report.md`).
+2. **Wstrzymanie kompresji `measurements` na czas wgrywania** (chunki historii są starsze niż 1 doba; bez tego zadanie
+   kompresji pakuje je w trakcie, a kolejne wstawki i uzupełnianie luk trafiają do skompresowanych chunków – wolniej):
    ```bash
-   cd /home/jumo/ai-predykcja
+   docker compose exec -T timescaledb sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+   SELECT alter_job(job_id, scheduled => false) FROM timescaledb_information.jobs
+    WHERE proc_name = 'policy_compression' AND hypertable_name = 'measurements';
+   SQL
+   ```
+3. **Pilotaż 1 doby** (ostatnia doba przed `T0`), w dzień, z obserwacją:
+   ```bash
    docker compose run --rm simulator-tools python -m simulator.backfill --from <T0 − 1 d> --to <T0> --devices meters
-   docker stats --no-stream aip-ingest aip-timescaledb aip-mosquitto     # kilka razy w trakcie
+   docker stats --no-stream aip-ingest aip-timescaledb aip-mosquitto     # kilka razy w trakcie (+ kontener simulator-tools)
    docker compose logs --since 1h ingest | grep -E 'odrzucone_sim|błąd'  # dane sim na żywo odrzucone w czasie wgrywania
    ```
    Kontrola danych prawdziwych w trakcie: ok. 20 wierszy/s `source = 'real'` jak przed startem (zapytanie z k4).
    Przy problemach (opóźnienie danych prawdziwych, ostrzeżenia brokera) dodać `--rate 500`.
-3. **Pełne wgranie w nocy:** liczniki `--from <meter_anchor> --to <T0 − 1 d> --devices meters`, pompa
-   `--from <bearing_installed_at> --to <T0> --devices pump`. Przerwane wgranie wznawia się tym samym poleceniem z `--from`
-   od czasu modelu z ostatniego wpisu „postęp” (duplikaty pomija baza).
-4. **Odświeżenie agregatów** kontem administratora – narzędzie wypisuje na końcu gotowe polecenia (kolejność: `energy_1m`,
+4. **Pełne wgranie w nocy, kolejno:** liczniki `--from <meter_anchor> --to <T0 − 1 d> --devices meters`, potem pompa
+   `--from <bearing_installed_at> --to <T0> --devices pump`. Przerwane wgranie wznawia się **tym samym poleceniem** (pełne
+   minuty są pomijane po sprawdzeniu w bazie).
+5. **Uzupełnienie luk** dla całego zakresu: to samo polecenie z `--fill-gaps` (liczniki od `meter_anchor` do `T0`, pompa
+   od `bearing_installed_at`). Kod 0 = brakujących minut 0; 1 = zostały luki (lista w logu, powtórzyć).
+6. **Włączenie kompresji** (jak w kroku 2, `scheduled => true`).
+7. **Odświeżenie agregatów** kontem administratora – narzędzie wypisuje na końcu gotowe polecenia (kolejność: `energy_1m`,
    `energy_ext_1m` → `energy_1h`, `energy_ext_1h` → `pump_1m`):
    ```bash
-   docker compose exec -T timescaledb psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-     -c "CALL refresh_continuous_aggregate('energy_1m', '<od>', '<do>');"   # … i kolejne z logu narzędzia
+   docker compose exec -T timescaledb sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+   CALL refresh_continuous_aggregate('energy_1m', '<od>', '<do>');   -- … i kolejne z logu narzędzia
+   SQL
    ```
-5. **Uzupełnienie luk** dla całego zakresu: `… python -m simulator.backfill --from <meter_anchor> --to <T0> --fill-gaps`
-   (pompa od `bearing_installed_at` osobno, `--devices pump`). Kod wyjścia 0 = brakujących minut 0; 1 = zostały luki
-   (lista w logu, powtórzyć). Po uzupełnieniu ponownie krok 4 dla zakresu z luk.
-6. **Okno `sim_backfill`** (szablon wyżej) z granicami pierwszego i ostatniego uruchomienia z logów narzędzia.
+8. **Okno `sim_backfill`** (szablon wyżej) z granicami pierwszego i ostatniego uruchomienia z logów narzędzia.
 
 ## Źródła pobierania (przygotowanie instalacji offline, etap 7)
 

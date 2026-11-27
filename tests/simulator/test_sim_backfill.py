@@ -1,8 +1,11 @@
-"""Narzędzie historii (E3-k5): zakresy i kroki, okno QoS 1, sufit tempa, sterowanie przepływem, wykrywanie luk (K5-U1),
-pamięć sum dobowych (K5-U4). Bez brokera i bazy (atrapy); integracja w test_sim_backfill_e2e.py."""
+"""Narzędzie historii (E3-k5): zakresy i kroki, okno QoS 1, sufit tempa, sterowanie przepływem (porcje i czekanie na bazę),
+pomijanie pełnych minut przy powtórnym przebiegu, wykrywanie i uzupełnianie luk jednej metryki (K5-U1), pamięć sum dobowych
+(K5-U4). Bez brokera i bazy (atrapy); integracja w test_sim_backfill_e2e.py."""
 from __future__ import annotations
 
+import dataclasses
 import json
+from datetime import datetime
 
 import pytest
 
@@ -17,11 +20,11 @@ PUMP = "sim_pump_p101"
 
 
 class Info:
-    def __init__(self, log):
-        self.rc, self.log, self.done = 0, log, False
+    def __init__(self, log, ok=True):
+        self.rc, self.log, self.done, self.ok = 0, log, False, ok
 
     def wait_for_publish(self, timeout=None):
-        self.done = True
+        self.done = self.ok
         self.log.append("wait")
 
     def is_published(self):
@@ -29,28 +32,33 @@ class Info:
 
 
 class Client:
-    def __init__(self):
-        self.sent, self.log = [], []
+    def __init__(self, ok=True):
+        self.sent, self.log, self.ok = [], [], ok
 
     def publish(self, topic, payload, qos):
         assert qos == 1
         self.sent.append((topic, payload))
-        info = Info(self.log)
-        return info
+        return Info(self.log, self.ok)
+
+
+def row_of(topic, payload):
+    _, _, device, metric = topic.split("/")
+    return device, metric, int(datetime.fromisoformat(json.loads(payload)["ts"].replace("Z", "+00:00")).timestamp())
 
 
 class FakeDb:
-    """Baza w pamięci: wiersze (device, metric, t)."""
+    """Baza w pamięci (wiersze device, metric, t) z „ingestem”: wiadomości klienta trafiają do bazy dopiero po `delay`
+    kolejnych odpytaniach minute_rows – sprawdza, że narzędzie naprawdę czeka przed kolejną porcją."""
 
-    def __init__(self):
-        self.rows = set()
+    def __init__(self, client=None, delay=0):
+        self.rows, self.client, self.delay = set(), client, delay
+        self.ingested, self.polls, self.published_at_poll = 0, 0, []
 
-    def add_messages(self, messages):
-        for topic, payload in messages:
-            _, _, device, metric = topic.split("/")
-            from datetime import datetime
-            t = int(datetime.fromisoformat(json.loads(payload)["ts"].replace("Z", "+00:00")).timestamp())
-            self.rows.add((device, metric, t))
+    def ingest(self):
+        if self.client is not None:
+            for message in self.client.sent[self.ingested:]:
+                self.rows.add(row_of(*message))
+            self.ingested = len(self.client.sent)
 
     def minute_counts(self, device, metric, start, end):
         out = {}
@@ -59,8 +67,16 @@ class FakeDb:
                 out[t - t % 60] = out.get(t - t % 60, 0) + 1
         return out
 
-    def has_row(self, device, metric, t):
-        return (device, metric, t) in self.rows
+    def minute_rows(self, devices, minute):
+        self.polls += 1
+        self.published_at_poll.append(len(self.client.sent) if self.client else 0)
+        if self.polls % (self.delay + 1) == 0:
+            self.ingest()
+        out = {}
+        for d, _, t in self.rows:
+            if d in devices and minute <= t < minute + 60:
+                out[d] = out.get(d, 0) + 1
+        return out
 
 
 def test_plan_steps_and_starts(make_sim):
@@ -77,7 +93,15 @@ def test_plan_steps_and_starts(make_sim):
         [(BEARING, {PUMP}), (BEARING + 60, {PUMP})]                            # pompa od montażu łożyska
 
 
-def test_window_limits_inflight_and_rate():
+def test_plan_rejects_partial_minutes_and_other_pump_steps(make_sim, sim_config):
+    with pytest.raises(ValueError, match="pełnymi minutami"):
+        Plan(make_sim(), ANCHOR + 30, ANCHOR + 120)
+    other = dataclasses.replace(sim_config, history=dataclasses.replace(sim_config.history, pump_step_s=120))
+    with pytest.raises(ValueError, match="pump_step_s"):
+        Plan(Simulator(other, None), ANCHOR, ANCHOR + 120, "pump")
+
+
+def test_window_limits_inflight_and_rate_and_fails_on_missing_puback():
     client = Client()
     window = Window(client, inflight=3)
     for i in range(10):
@@ -96,63 +120,85 @@ def test_window_limits_inflight_and_rate():
     assert sum(slept) == pytest.approx(2.0, abs=0.11)                           # 20 wiadomości przy 10/s = ok. 2 s
     with pytest.raises(ValueError):
         Window(client, inflight=0)
+    broken = Window(Client(ok=False), inflight=2, timeout=0.01)
+    with pytest.raises(TimeoutError):                                           # brak PUBACK = błąd, nie ciche gubienie
+        for i in range(3):
+            broken.publish("t", b"x")
 
 
-def test_run_waits_for_the_database_after_each_chunk(make_sim):
-    """Sterowanie przepływem end-to-end: po każdej porcji czekanie na zapis ostatniej minuty w bazie."""
-    sim = make_sim()
-    plan = Plan(sim, ANCHOR, ANCHOR + 600, "meters")
-    client, db = Client(), FakeDb()
-    waits = []
-
-    class Db(FakeDb):
-        def has_row(self, device, metric, t):
-            db.add_messages(client.sent)                                        # „ingest” zapisuje to, co wysłano
-            waits.append(t)
-            return FakeDb.has_row(db, device, metric, t)
-
-    stats = run(plan, Window(client, 100), Db(), ANCHOR, ANCHOR + 600, chunk_s=300)
-    assert stats["chunks"] == 2 and stats["messages"] == 600 * 4 * 6
-    assert waits == [ANCHOR + 299, ANCHOR + 599]
+def test_run_publishes_in_chunks_and_waits_for_the_database(make_sim):
+    """Sterowanie przepływem: przed kolejną porcją ostatnia minuta porcji musi być w bazie kompletna; dopóki „ingest” jej
+    nie zapisał, nic więcej nie jest wysyłane (zaległość ≤ jedna porcja)."""
+    plan = Plan(make_sim(), ANCHOR, ANCHOR + 600, "meters")
+    client = Client()
+    db = FakeDb(client, delay=2)
+    stats = run(plan, Window(client, 100), db, ANCHOR, ANCHOR + 600, chunk_messages=1440, sleep=lambda s: None)
+    assert stats["messages"] == 600 * 4 * 6 and stats["chunks"] == 10 and db.polls == 30
+    assert sorted(set(db.published_at_poll)) == [1440 * k for k in range(1, 11)]   # w czasie czekania wysyłka stoi
 
 
-def test_incomplete_minutes_detects_a_single_missing_metric(make_sim):
-    """K5-U1: brak wierszy tylko jednej metryki (power_factor) w jednej minucie jest wykryty i uzupełniony."""
-    sim = make_sim()
+def test_second_run_skips_complete_minutes_and_resends_only_gaps(make_sim):
+    """Powtórny przebieg (wznowienie) pomija pełne minuty, więc nie zalewa brokera duplikatami; luka jednej metryki
+    (power_factor jednego licznika, K5-U1) wraca tylko jako ta minuta tego urządzenia."""
     start, end = ANCHOR + 3600, ANCHOR + 3600 + 300
-    plan = Plan(sim, start, end)
-    db = FakeDb()
-    for t, devices in plan.moments(start, end):
-        db.add_messages(plan.messages(t, devices))
-    assert incomplete_minutes(plan, db, start, end) == {}
+    plan = Plan(make_sim(), start, end)
+    client = Client()
+    db = FakeDb(client)
+    first = run(plan, Window(client, 100), db, start, end, sleep=lambda s: None)
+    assert first["messages"] == 300 * 24 + 5 * 5 and incomplete_minutes(plan, db, start, end) == {}
+    again = run(plan, Window(client, 100), db, start, end, sleep=lambda s: None)
+    assert again["messages"] == 0 and again["device_minutes_skipped"] == 5 * 5
     removed = {r for r in db.rows if r[0] == "sim_mieszalnik" and r[1] == "power_factor" and start + 120 <= r[2] < start + 125}
     db.rows -= removed
-    missing = incomplete_minutes(plan, db, start, end)
-    assert missing == {"sim_mieszalnik": {start + 120}}
-    client = Client()
-    window = Window(client, 100)
-
-    original = Window.drain
-
-    def drain_and_store(self):
-        original(self)
-        db.add_messages(client.sent)
-
-    Window.drain = drain_and_store
-    try:
-        result = fill_gaps(plan, window, db, start, end)
-    finally:
-        Window.drain = original
+    assert incomplete_minutes(plan, db, start, end) == {"sim_mieszalnik": {start + 120}}
+    result = fill_gaps(plan, Window(client, 100), db, start, end, sleep=lambda s: None)
     assert result["missing_before"] == 1 and result["missing_after"] == 0
-    assert result["messages"] == 60 * 6                                         # cała minuta jednego licznika
-    assert removed <= db.rows
+    assert result["messages"] == 60 * 6 and removed <= db.rows                     # cała minuta jednego licznika
+
+
+def test_fill_gaps_of_a_large_gap_goes_in_chunks(make_sim):
+    """Duża luka (np. przerwane wgrywanie) przy --fill-gaps też idzie porcjami z czekaniem na bazę."""
+    start, end = ANCHOR, ANCHOR + 1200
+    plan = Plan(make_sim(), start, end, "meters")
+    client = Client()
+    db = FakeDb(client, delay=1)
+    result = fill_gaps(plan, Window(client, 100), db, start, end, chunk_messages=7200, sleep=lambda s: None)
+    assert result["missing_before"] == 80 and result["missing_after"] == 0 and result["chunks"] == 4
+    assert max(db.published_at_poll) == 1200 * 24 and sorted(set(db.published_at_poll))[0] == 7200
+
+
+def test_wait_times_out_when_ingest_never_writes(make_sim):
+    plan = Plan(make_sim(), ANCHOR, ANCHOR + 60, "meters")
+    client = Client()
+    db = FakeDb(client, delay=10 ** 9)
+    clock = {"t": 0.0}
+
+    def sleep(seconds):
+        clock["t"] += seconds
+
+    with pytest.raises(TimeoutError, match="ingest nie zapisał"):
+        run(plan, Window(client, 100), db, ANCHOR, ANCHOR + 60, clock=lambda: clock["t"], sleep=sleep, wait_timeout=5)
+
+
+def test_incomplete_minutes_skips_days_before_the_device_history(make_sim):
+    plan = Plan(make_sim(), ANCHOR - 3 * 86400, ANCHOR + 120)
+    queried = []
+
+    class CountingDb(FakeDb):
+        def minute_counts(self, device, metric, start, end):
+            queried.append((device, start))
+            return {}
+
+    missing = incomplete_minutes(plan, CountingDb(), plan.start, plan.end)
+    assert all(start >= ANCHOR for device, start in queried if device in METERS)    # bez zapytań przed kotwicą liczników
+    assert missing["sim_chlodnia"] == {ANCHOR, ANCHOR + 60} and len(missing[PUMP]) == 3 * 1440 + 2
 
 
 def test_backfill_uses_the_shared_day_sum_cache(sim_config, tmp_path):
     """K5-U4: narzędzie korzysta z tego samego pliku pamięci sum co usługa – drugi start nie liczy dób od nowa."""
     path = str(tmp_path / "energy-days.json")
     first = Simulator(sim_config, path)
-    plan = Plan(first, ANCHOR + 3 * 86400, ANCHOR + 3 * 86400 + 5, "meters")
+    plan = Plan(first, ANCHOR + 3 * 86400, ANCHOR + 3 * 86400 + 60, "meters")
     run(plan, Window(Client(), 100), None, plan.start, plan.end)
     first.cache.flush()
     second = Simulator(sim_config, path)
