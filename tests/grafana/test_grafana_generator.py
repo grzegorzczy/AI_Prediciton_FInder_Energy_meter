@@ -420,7 +420,7 @@ def test_k6b_visual_fixes():
     assert trend["timeFrom"] == f"{generator.TREND_DAYS}d" and trend["hideTimeOverride"] is False          # V1: oś 90 dni
     fresh = next(p for p in fleet["panels"] if p["title"] == "Świeżość danych w czasie")["targets"][0]["rawSql"]
     assert "(SELECT min(x.bucket) FROM energy_1h x WHERE x.device_id = d.device_id) AS first_h" in fresh   # V2: raz na urządzenie
-    assert "WHEN f.first IS NULL OR b.t + s.step <= f.first THEN NULL" in fresh
+    assert "WHEN f.first IS NULL OR b.t + s.step <= f.first THEN NULL" in fresh and "f AS MATERIALIZED" in fresh   # raz, nie w każdym wierszu osi
     for dash in (fleet, pump):
         banner = next(p for p in dash["panels"] if p["type"] == "text")
         assert banner["gridPos"]["h"] >= 3 and len(banner["options"]["content"]) <= 130                      # V4: bez przewijania

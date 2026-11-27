@@ -778,7 +778,7 @@ def coverage_states(device_filter: str, label: str, poll: str, source: str, n_co
             f"WHERE $__timeFilter(bucket) GROUP BY 1, 2), "
             f"h AS MATERIALIZED (SELECT d.device_id, (SELECT min(x.bucket) FROM {hourly} x WHERE x.device_id = d.device_id) AS first_h "
             f"FROM devices d WHERE {device_filter}), "
-            f"f AS (SELECT h.device_id, CASE WHEN h.first_h >= $__timeFrom()::timestamptz - interval '1 hour' "
+            f"f AS MATERIALIZED (SELECT h.device_id, CASE WHEN h.first_h >= $__timeFrom()::timestamptz - interval '1 hour' "
             f"THEN (SELECT min(a.t) FROM a WHERE a.device_id = h.device_id) ELSE h.first_h END AS first FROM h) "
             f"SELECT b.t AS time, {label} AS metric, CASE "
             f"WHEN f.first IS NULL OR b.t + s.step <= f.first THEN NULL "
