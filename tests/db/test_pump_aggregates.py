@@ -29,7 +29,7 @@ def pump_minute(conn, start, speed_expr="2950", seconds=60, vib="3.0 + g / 600.0
 
 
 def refresh(conn, view="pump_1m", start=None, end=None):
-    conn.execute(f"CALL refresh_continuous_aggregate('{view}', %s, %s)", (start, end))
+    conn.execute(f"CALL refresh_continuous_aggregate('{view}', %s::timestamptz, %s::timestamptz)", (start, end))
 
 
 def test_values_and_running_flag(pg, migrated_db):
@@ -133,8 +133,9 @@ def test_refresh_and_insert_into_compressed_chunks(pg, migrated_db):
                      (old + timedelta(days=1),))
         mat = conn.execute("SELECT materialization_hypertable_schema || '.' || materialization_hypertable_name "
                            "FROM timescaledb_information.continuous_aggregates WHERE view_name = 'pump_1m'").fetchone()[0]
+        # chunki agregatu obejmują po 10 dób, więc granica „older_than” musi być za końcem chunku z danymi testu
         conn.execute(f"SELECT compress_chunk(c, if_not_compressed => true) FROM show_chunks('{mat}', older_than => %s) c",
-                     (old + timedelta(days=1),))
+                     (old + timedelta(days=15),))
         compressed = conn.execute("SELECT hypertable_name, count(*) FILTER (WHERE is_compressed) FROM timescaledb_information.chunks "
                                   "GROUP BY 1").fetchall()
         assert all(n >= 1 for _, n in compressed if _ in ("measurements", mat.split(".")[1])), compressed

@@ -154,5 +154,5 @@ def test_migration_002_interrupted_midway_completes_on_the_next_run(
 def test_no_transaction_runner_creates_continuous_aggregates(admin):
     names = {r[0] for r in admin.execute(
         "SELECT view_name FROM timescaledb_information.continuous_aggregates").fetchall()}
-    assert names == set(AGGREGATES) | {"energy_ext_1m", "energy_ext_1h"}
+    assert names == set(AGGREGATES) | {"energy_ext_1m", "energy_ext_1h", "pump_1m"}      # pump_1m: migracja 012 (E3-k4)
     assert (MIGRATIONS / "002_energy_aggregates.sql").read_text(encoding="utf-8").startswith("-- migrate: no-transaction")
