@@ -178,3 +178,43 @@ def test_migration_012_interrupted_midway_completes_on_the_next_run(pg, fresh_db
         assert conn.execute("SELECT has_table_privilege('app_reader', 'pump_1m_calc', 'SELECT')").fetchone()[0]
     again = run_migrate(fresh_db)
     assert again.returncode == 0 and "0 applied" in again.stderr
+
+
+def test_simulator_pump_samples_give_model_means_and_running_flags(pg, migrated_db):
+    """Dane z modelu pompy (samples_at) wstawione do measurements: średnie w pump_1m_calc równe średnim z modelu, minuta w zmianie
+    = praca, minuta nocą = postój (zamiast e2e przez MQTT – ścieżkę MQTT -> ingest sprawdza test_sim_e2e)."""
+    import copy
+    import sys
+    from pathlib import Path
+
+    import yaml
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "simulator"))
+    from sim_support import set_dates
+    from simulator.config import load_config_dict
+    from simulator.samples import Simulator
+    from zoneinfo import ZoneInfo
+
+    from dbtools import REPO
+
+    raw = set_dates(copy.deepcopy(yaml.safe_load((REPO / "config" / "devices.yaml").read_text(encoding="utf-8"))))
+    sim = Simulator(load_config_dict(raw))
+    waw = ZoneInfo("Europe/Warsaw")
+    work = int(datetime(2026, 11, 24, 9, 0, tzinfo=waw).timestamp())          # wtorek, praca
+    night = int(datetime(2026, 11, 24, 23, 30, tzinfo=waw).timestamp())       # postój
+    expected = {}
+    with admin_connect(pg, migrated_db) as conn:
+        seed_pump(conn)
+        for start in (work, night):
+            rows = [(t, d, m, v, u) for t in range(start, start + 60) for d, m, v, u in sim.samples_at(t, devices={PUMP})]
+            with conn.cursor() as cur:
+                cur.executemany("INSERT INTO measurements (time, device_id, metric, value, unit, source) "
+                                "VALUES (to_timestamp(%s), %s, %s, %s, %s, 'sim')", rows)
+            vib = [v for _, _, m, v, _ in rows if m == "vibration_rms"]
+            expected[start] = sum(vib) / len(vib)
+        refresh(conn, start=datetime.fromtimestamp(work, timezone.utc) - timedelta(hours=1),
+                end=datetime.fromtimestamp(night, timezone.utc) + timedelta(hours=1))
+        got = {int(r[0].timestamp()): (r[1], r[2]) for r in conn.execute(
+            "SELECT bucket, vibration_avg, running FROM pump_1m_calc ORDER BY bucket").fetchall()}
+    assert got[work][0] == pytest.approx(expected[work]) and got[work][1] is True
+    assert got[night][0] == pytest.approx(expected[night]) and got[night][1] is False
