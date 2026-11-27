@@ -90,7 +90,7 @@ Wiaderko 1 min na urządzenie, tylko minuty z metrykami pompy. Kolumny ustalone 
 | `run_n` | liczba próbek | **znacznik pracy:** próbki obrotów > 0 w minucie |
 
 Widok `pump_1m_calc`: średnie (`*_avg` = sum / n), `vibration_n`, `speed_n`, `run_n`, `run_share = run_n / speed_n` i **`running` = `speed_n > 0 AND run_n = speed_n`** (K4-D2): minuta pracy to minuta, w której wszystkie próbki obrotów są > 0; minuty postoju i częściowe (start i koniec zmiany) nie są minutami pracy. Trend drgań (etap 5) liczy tylko minuty pracy. **Liczność (K4-U4):** na żywo minuta ma ok. 60 próbek, w historii (k5) 1 próbkę; minuta z jedną próbką (np. pierwsza po restarcie symulatora) też ma `running = true` – etap 5 może wymagać minimum `speed_n` (np. ≥ 30 dla danych na żywo).
-Polityki: odświeżanie 7 dni / 1 min / co 1 min, `materialized_only = false`, kompresja po 14 dniach (`segmentby = device_id`), **retencja 1 rok**. Historia starsza niż okno odświeżania wymaga ręcznego `CALL refresh_continuous_aggregate('pump_1m', od, do)` (k5).
+Polityki: odświeżanie 7 dni / 1 min / co 1 min, `materialized_only = false`, kompresja po 14 dniach (`segmentby = device_id`), **retencja 1 rok**. Historia starsza niż okno odświeżania wymaga ręcznego `CALL refresh_continuous_aggregate('pump_1m', od, do)` (k5). **Historia symulatora (E3-k5):** wgrywana narzędziem `simulator.backfill` przez MQTT (QoS 1) i ingest, jak dane na żywo (`source = sim`); liczniki 1 próbka/s, pompa 1 próbka/min; po wgraniu ręczne odświeżenie `energy_1m`, `energy_ext_1m`, `energy_1h`, `energy_ext_1h`, `pump_1m` dla zakresu historii (procedura w `docs/ops/jumo-ipc-setup.md`).
 
 ### `measurements` (hypertable)
 

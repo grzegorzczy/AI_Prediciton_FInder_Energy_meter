@@ -34,5 +34,6 @@ def test_all_services_log_with_the_local_driver_and_rotation():
 def test_memory_limits_sum_fits_the_budget():
     def mib(text):
         return int(text[:-1]) * (1024 if text.endswith("g") else 1)
-    total = sum(mib(svc["mem_limit"]) for svc in services().values())
+    # usługi z profilem (np. simulator-tools, E3-k5) uruchamia się jednorazowo, nie działają stale
+    total = sum(mib(svc["mem_limit"]) for svc in services().values() if not svc.get("profiles"))
     assert total <= 2560, total                    # 16 GB komputera, smartWARE ok. 0,4-1 GB: limity razem poniżej 2,5 GiB

@@ -1,3 +1,4 @@
 PyYAML==6.0.4
 tzdata==2025.2               # baza stref czasowych dla zoneinfo niezależnie od obrazu (K2-U2, K2R-U1)
 paho-mqtt==2.2.0
+psycopg[binary]==3.3.9      # tylko narzędzie historii (simulator-tools, odczyt kontem app_reader, K5-D1)

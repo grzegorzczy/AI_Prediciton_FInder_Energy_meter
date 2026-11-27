@@ -408,6 +408,43 @@ zapisu, kontener `read_only`): sumy W·s każdej doby od kotwicy dla czterech li
 przeliczają wszystkie doby od kotwicy: minuty po kilku miesiącach). Plik można w każdej chwili usunąć – symulator go odtworzy;
 przy niezgodności z modelem (klucz z `MODEL_VERSION` i parametrami, kontrola ostatniej doby) jest odrzucany automatycznie.
 
+## Historia symulatora (E3-k5, wykonanie we wdrożeniu k7)
+
+Narzędzie `python -m simulator.backfill` w jednorazowej usłudze `simulator-tools` (profil `tools`, K5-D1): ten sam obraz,
+config, konto MQTT i pamięć sum dobowych co `simulator` (wspólny wolumen, K5-U4), plus odczyt bazy kontem **`app_reader`**
+(tylko do odczytu, `statement_timeout` 10 s). Usługa na żywo nie ma dostępu do bazy. Publikacja QoS 1, okno w locie 100
+(K5-D2), bez sufitu tempa. Ponieważ PUBACK wysyła broker, a nie ingest, narzędzie dodatkowo idzie **porcjami 5 min czasu
+modelu** i przed kolejną porcją czeka, aż ostatni wiersz poprzedniej jest w bazie – kolejka brokera dla ingestu (wspólna
+z danymi prawdziwymi) nie przekracza jednej porcji (ok. 7 200 wiadomości przy limicie 80 000).
+
+Kolejność w k7 (po ustawieniu dat w `devices.yaml` i starcie symulatora na żywo; `T0` = chwila startu trybu na żywo,
+pełna minuta, z logu symulatora):
+
+1. **Miejsce na dysku:** `df -h /var/lib/docker` – wolne co najmniej 3× prognozy (raport k5: przyrost bazy na dobę liczników
+   z pilotażu × 14 + WAL), czyli ok. 6 GB.
+2. **Pilotaż 1 doby** (ostatnia doba przed `T0`), w dzień, z obserwacją:
+   ```bash
+   cd /home/jumo/ai-predykcja
+   docker compose run --rm simulator-tools python -m simulator.backfill --from <T0 − 1 d> --to <T0> --devices meters
+   docker stats --no-stream aip-ingest aip-timescaledb aip-mosquitto     # kilka razy w trakcie
+   docker compose logs --since 1h ingest | grep -E 'odrzucone_sim|błąd'  # dane sim na żywo odrzucone w czasie wgrywania
+   ```
+   Kontrola danych prawdziwych w trakcie: ok. 20 wierszy/s `source = 'real'` jak przed startem (zapytanie z k4).
+   Przy problemach (opóźnienie danych prawdziwych, ostrzeżenia brokera) dodać `--rate 500`.
+3. **Pełne wgranie w nocy:** liczniki `--from <meter_anchor> --to <T0 − 1 d> --devices meters`, pompa
+   `--from <bearing_installed_at> --to <T0> --devices pump`. Przerwane wgranie wznawia się tym samym poleceniem z `--from`
+   od czasu modelu z ostatniego wpisu „postęp” (duplikaty pomija baza).
+4. **Odświeżenie agregatów** kontem administratora – narzędzie wypisuje na końcu gotowe polecenia (kolejność: `energy_1m`,
+   `energy_ext_1m` → `energy_1h`, `energy_ext_1h` → `pump_1m`):
+   ```bash
+   docker compose exec -T timescaledb psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+     -c "CALL refresh_continuous_aggregate('energy_1m', '<od>', '<do>');"   # … i kolejne z logu narzędzia
+   ```
+5. **Uzupełnienie luk** dla całego zakresu: `… python -m simulator.backfill --from <meter_anchor> --to <T0> --fill-gaps`
+   (pompa od `bearing_installed_at` osobno, `--devices pump`). Kod wyjścia 0 = brakujących minut 0; 1 = zostały luki
+   (lista w logu, powtórzyć). Po uzupełnieniu ponownie krok 4 dla zakresu z luk.
+6. **Okno `sim_backfill`** (szablon wyżej) z granicami pierwszego i ostatniego uruchomienia z logów narzędzia.
+
 ## Źródła pobierania (przygotowanie instalacji offline, etap 7)
 
 Obrazy (tag i digest są w `docker-compose.yml`, `db/Dockerfile`, `tests/Dockerfile`):

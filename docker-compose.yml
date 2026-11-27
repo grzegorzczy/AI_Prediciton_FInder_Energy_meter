@@ -249,6 +249,48 @@ services:
     logging: *default-logging
     networks: [backend]
 
+  simulator-tools:
+    # E3-k5 (K5-D1): jednorazowe wgrywanie historii i uzupełnianie luk (python -m simulator.backfill). Profil `tools`: NIE startuje
+    # przy `up -d`; uruchamianie: docker compose run --rm simulator-tools python -m simulator.backfill --from … --to … [--fill-gaps].
+    # Tylko tu jest hasło bazy (konto tylko do odczytu app_reader); usługa `simulator` (tryb na żywo) nie ma dostępu do bazy.
+    profiles: [tools]
+    image: aip-simulator:local
+    build:
+      context: ./services/simulator
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+      DEVICES_CONFIG: /config/devices.yaml
+      SIM_CACHE: /var/lib/simulator/energy-days.json     # ta sama pamięć sum co usługa na żywo (K5-U4)
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_USER: ${MQTT_SIM_USER:-}
+      MQTT_PASSWORD: ${MQTT_SIM_PASSWORD:-}
+      SIM_CLIENT_ID: aip-simulator-backfill
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:?ustaw w .env}
+      DB_USER: app_reader
+      DB_PASSWORD: ${APP_READER_PASSWORD:?ustaw w .env}
+      LOG_LEVEL: INFO
+    volumes:
+      - ./config/devices.yaml:/config/devices.yaml:ro
+      - aip_simulator_data:/var/lib/simulator
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    memswap_limit: 128m
+    restart: "no"
+    command: ["python", "-m", "simulator.backfill", "--help"]
+    logging: *default-logging
+    networks: [backend]
+
   grafana:
     # Dashboardy jako kod (grafana/), źródło danych wyłącznie rolą app_reader (zasada 4). Port 3000 w LAN, HTTP bez TLS (G7-h).
     # Wersja z digestem: docs/ops. Sekrety tylko z .env; klucz GF_SECURITY_SECRET_KEY musi istnieć przed pierwszym startem wolumenu.

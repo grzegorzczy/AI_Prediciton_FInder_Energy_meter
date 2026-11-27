@@ -37,3 +37,16 @@ def test_dockerfile_uses_tzdata_only_and_an_unprivileged_user():
     assert "USER simulator" in text and "@sha256:" in text
     requirements = (REPO / "services" / "simulator" / "requirements.txt").read_text(encoding="utf-8")
     assert "tzdata==2025.2" in requirements and "paho-mqtt==2.2.0" in requirements
+
+
+
+def test_tools_service_has_the_database_and_the_live_service_does_not():
+    """K5-D1: hasło bazy (konto tylko do odczytu) tylko w simulator-tools z profilem `tools`; usługa na żywo bez bazy."""
+    services = compose()["services"]
+    live, tools = services["simulator"], services["simulator-tools"]
+    assert not any(key.startswith("DB_") for key in live["environment"])
+    assert tools["profiles"] == ["tools"] and tools["restart"] == "no"
+    assert tools["environment"]["DB_USER"] == "app_reader" and tools["environment"]["DB_PASSWORD"] == "${APP_READER_PASSWORD:?ustaw w .env}"
+    assert tools["environment"]["SIM_CACHE"] == live["environment"]["SIM_CACHE"]                 # K5-U4: wspólna pamięć sum
+    assert "aip_simulator_data:/var/lib/simulator" in tools["volumes"] and tools["read_only"] is True
+    assert tools["mem_limit"] == "128m" and tools["image"] == live["image"]
