@@ -3,6 +3,7 @@ jednej metryki (K5-U1), sterowanie przepływem z odczytem bazy kontem app_reader
 from __future__ import annotations
 
 import os
+import threading
 import time
 import uuid
 
@@ -98,7 +99,20 @@ def test_backfill_pilot_one_day(env):
     plan = Plan(sim, start, end)
     with admin_connect(pg, dbname) as conn:
         size0 = conn.execute("SELECT pg_database_size(current_database())").fetchone()[0]
-    stats = run(plan, Window(env["client"], 100), db, start, end, chunk_s=300)
+    window = Window(env["client"], 100)
+    backlog, stop = [], threading.Event()
+
+    def sample():                     # K5-U3: wysłane, a jeszcze nie w bazie (kolejka brokera + ingest) co 10 s
+        while not stop.wait(10):
+            backlog.append(window.sent - count_rows(pg, dbname, "source = 'sim'"))
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    stats = run(plan, window, db, start, end, chunk_s=300)
+    stop.set()
+    sampler.join()
+    print(f"\n[pilotaż] zaległość (wysłane − w bazie) co 10 s: maks. {max(backlog, default=0)}, "
+          f"średnio {sum(backlog) / max(len(backlog), 1):.0f}, próbek {len(backlog)}")
     until_rows = time.monotonic() + 120
     expected = 86400 * 4 * 6 + 1440 * 5
     while count_rows(pg, dbname, "source = 'sim'") < expected and time.monotonic() < until_rows:
