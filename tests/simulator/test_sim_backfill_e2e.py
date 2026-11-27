@@ -108,8 +108,7 @@ def test_backfill_pilot_one_day(env):
         size1 = conn.execute("SELECT pg_database_size(current_database())").fetchone()[0]
         table = conn.execute("SELECT hypertable_size('measurements')").fetchone()[0]
     rows = count_rows(pg, dbname, "source = 'sim'")
-    print(f"
-[pilotaż] {stats['messages']} wiadomości w {stats['elapsed_s']:.0f} s ({stats['rate']:.0f}/s), porcji "
+    print(f"\n[pilotaż] {stats['messages']} wiadomości w {stats['elapsed_s']:.0f} s ({stats['rate']:.0f}/s), porcji "
           f"{stats['chunks']}, oczekiwanie na bazę {stats['waited_s']:.0f} s; wiersze {rows}; przyrost bazy "
           f"{(size1 - size0) / 2**20:.0f} MiB, measurements {table / 2**20:.0f} MiB = {table / max(rows, 1):.0f} B/wiersz "
           f"(bez kompresji); 14 dób liczników ok. {table / max(rows, 1) * 14 * 86400 * 24 / 2**30:.1f} GiB przed kompresją")
