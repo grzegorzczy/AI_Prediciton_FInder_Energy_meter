@@ -146,6 +146,7 @@ services:
       INGEST_FLUSH_S: "1.0"
       INGEST_MAX_FUTURE_S: "300"
       INGEST_MAX_PAST_DAYS: "400"
+      INGEST_SIM_PENDING_MAX: "3000"     # limit wierszy sim (QoS 0) w pamięci ingestu, ok. 100 s danych symulatora (K4-D1)
       LOG_LEVEL: INFO
     volumes:
       - ./config/devices.yaml:/config/devices.yaml:ro

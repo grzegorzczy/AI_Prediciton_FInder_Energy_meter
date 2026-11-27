@@ -116,6 +116,7 @@ def main() -> int:
         flush_s=float(os.environ.get("INGEST_FLUSH_S", "1.0")),
         max_future_s=float(os.environ.get("INGEST_MAX_FUTURE_S", "300")),
         max_past_days=float(os.environ.get("INGEST_MAX_PAST_DAYS", "400")),
+        sim_pending_max=int(os.environ.get("INGEST_SIM_PENDING_MAX", "3000")),
     )
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):

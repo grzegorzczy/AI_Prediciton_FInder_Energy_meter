@@ -60,7 +60,8 @@ def test_refresh_windows_are_shorter_than_raw_retention_and_compression_follows_
 def test_compression_settings_of_the_aggregates(admin):
     rows = admin.execute(
         "SELECT view_name, compression_enabled FROM timescaledb_information.continuous_aggregates ORDER BY 1").fetchall()
-    assert rows == [("energy_1h", True), ("energy_1m", True), ("energy_ext_1h", True), ("energy_ext_1m", True)]
+    assert rows == [("energy_1h", True), ("energy_1m", True), ("energy_ext_1h", True), ("energy_ext_1m", True),
+                    ("pump_1m", True)]                                  # pump_1m od migracji 012 (E3-k4)
 
 
 def test_reader_reads_every_aggregate_and_view(reader):

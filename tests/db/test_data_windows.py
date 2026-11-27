@@ -85,3 +85,15 @@ def test_ipc_reboot_window_matches_the_measured_gap(admin):
     start, end = admin.execute("SELECT start_time, end_time FROM data_windows WHERE kind = 'ipc_reboot'").fetchone()
     assert start.isoformat().startswith("2026-11-25T12:03:47.557")
     assert end.isoformat().startswith("2026-11-25T12:04:24.705")
+
+
+
+@pytest.mark.parametrize("kind, exclude", [("sim_reset", True), ("sim_backfill", False)])
+def test_simulator_window_kinds_are_accepted_and_visible(admin, reader, kind, exclude):
+    """E3-k4: okna symulatora (K2R-D2 wymiana łożyska – wyłączone z analityki; K4-U3 wgrywanie historii – tylko adnotacja).
+    Wstawiane tu w bazie testowej; na produkcji każde okno to osobna migracja wg szablonu w docs/ops (sekcja Symulator)."""
+    admin.execute("INSERT INTO data_windows (start_time, end_time, kind, description, exclude_from_analytics) "
+                  "VALUES ('2027-03-01 06:00:00+00', '2027-03-01 06:01:00+00', %s, 'test', %s)", (kind, exclude))
+    rows = reader.execute(ANNOTATION_SQL, {"from": "2027-03-01 05:00:00+00", "to": "2027-03-01 07:00:00+00"}).fetchall()
+    assert [r[2] for r in rows] == [kind]
+    assert reader.execute("SELECT exclude_from_analytics FROM data_windows WHERE kind = %s", (kind,)).fetchone()[0] is exclude

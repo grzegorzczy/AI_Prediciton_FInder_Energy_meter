@@ -76,6 +76,22 @@ sekcja `simulator`); to **dane modelu, nie pomiary**. Na żywo co 1 s (k3), hist
   stałą kotwicę `meter_anchor` i się nie cofają (K2R-D1, K2R-D2).
   `vibration_end_mm_s` to koniec zakresu modelu, **nie próg alarmowy** (progi: etap 5).
 
+### Agregat pompy `pump_1m` i widok `pump_1m_calc` (migracja 012, E3-k4)
+
+Wiaderko 1 min na urządzenie, tylko minuty z metrykami pompy. Kolumny ustalone na stałe (K4-U5; dodatki = osobny agregat):
+
+| Kolumny | Jednostka | Znaczenie |
+| --- | --- | --- |
+| `vibration_n/_sum/_min/_max` | mm/s | drgania RMS (`vibration_rms`) |
+| `bearing_temperature_n/_sum/_min/_max` | °C | temperatura łożyska |
+| `motor_current_n/_sum/_min/_max` | A | prąd silnika |
+| `flow_n/_sum/_min/_max` | m³/h | przepływ |
+| `speed_n/_sum/_min/_max` | rpm | obroty |
+| `run_n` | liczba próbek | **znacznik pracy:** próbki obrotów > 0 w minucie |
+
+Widok `pump_1m_calc`: średnie (`*_avg` = sum / n), `speed_n`, `run_n`, `run_share = run_n / speed_n` i **`running` = `speed_n > 0 AND run_n = speed_n`** (K4-D2): minuta pracy to minuta, w której wszystkie próbki obrotów są > 0; minuty postoju i częściowe (start i koniec zmiany) nie są minutami pracy. Trend drgań (etap 5) liczy tylko minuty pracy. **Liczność (K4-U4):** na żywo minuta ma ok. 60 próbek, w historii (k5) 1 próbkę; minuta z jedną próbką (np. pierwsza po restarcie symulatora) też ma `running = true` – etap 5 może wymagać minimum `speed_n` (np. ≥ 30 dla danych na żywo).
+Polityki: odświeżanie 7 dni / 1 min / co 1 min, `materialized_only = false`, kompresja po 14 dniach (`segmentby = device_id`), **retencja 1 rok**. Historia starsza niż okno odświeżania wymaga ręcznego `CALL refresh_continuous_aggregate('pump_1m', od, do)` (k5).
+
 ### `measurements` (hypertable)
 
 | Kolumna | Typ | Opis |
@@ -101,7 +117,7 @@ wartość), bo tylko takie można poprawnie złożyć w agregat godzinny. Warto�
 | --- | --- | --- | --- |
 | `energy_1m` | 1 min | `measurements` | dla każdej metryki: liczność `*_n` (sekundy z pomiarem) i suma `*_sum`; dla mocy czynnej, napięcia i prądu także `*_min`, `*_max`; stan liczników energii `import_first/last/min/max` i `export_first/last/min/max` (Wh); `meter_error_seconds` (sekundy z `meter_status` ≠ 0) i `meter_status_n` |
 | `energy_1h` | 1 h | `energy_1m` (agregat hierarchiczny) | te same kolumny, złożone z minutowych (sumy sum, minima z minimów, `first`/`last` z wiaderek) |
-| `pump_1m` | 1 min | `measurements` | planowany w etapie 4 |
+| `pump_1m` | 1 min | `measurements` | migracja `012_pump_aggregates.sql` (E3-k4): pompy, opis niżej |
 
 - `plc-01` (tylko `link_status`) nie tworzy wierszy; agregaty obejmują metryki licznika wymienione w migracji.
 - **Luki są normalnym stanem danych** (epizody, awarie, zaniki zasilania): nie ma interpolacji, a brak próbek widać w `*_n` i `coverage`.

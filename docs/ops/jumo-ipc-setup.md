@@ -352,8 +352,10 @@ Dane nie giną w normalnej pracy, ale bufory są ograniczone. Co się dzieje prz
 Ingest potwierdza wiadomość brokerowi dopiero po zapisie w bazie, więc awaria ingestu lub bazy nie gubi niczego w granicach
 kolejki sesji, a ponowne dostarczenie nie tworzy duplikatów (`ON CONFLICT DO NOTHING`). Przy niedostępnej bazie do ingestu
 dociera najwyżej 100 niepotwierdzonych wiadomości **QoS 1** (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze.
-Wiadomości QoS 0 (dane symulatora) limit ten nie obejmuje, dlatego ingest przy niedostępnej bazie je odrzuca (WARNING na
-początku i na końcu przerwy z liczbą odrzuconych) zamiast trzymać w pamięci (E3-k3). Dla
+Wiadomości QoS 0 limit ten nie obejmuje, dlatego ingest ma **limit danych symulatora** (E3-k4, K4-D1): wiersz urządzenia
+`source = sim` dostarczony z QoS 0 jest odrzucany, gdy baza jest niedostępna albo w pamięci czeka już `INGEST_SIM_PENDING_MAX`
+(3 000, ok. 100 s) wierszy sim. Dane real nie są odrzucane nigdy (także z QoS 0); wiersze sim z QoS 1 (wgrywanie historii) też nie.
+W logu jeden WARNING na początku epizodu (z przyczyną) i jeden na końcu (liczba odrzuconych, czas trwania). Dla
 demo akceptowalne; przy dłuższych przerwach trzeba liczyć się z luką w danych.
 
 ## Symulator (od etapu 3, E3-k3)
@@ -381,6 +383,22 @@ ACL (K1-D2): collector pisze tylko do `zaklad1/linia1/+/+`, symulator tylko do `
   **Wymiana łożyska** = nowa `bearing_installed_at` (x = 0, drgania ok. 1,1 mm/s) i okno `sim_reset` w `data_windows`;
   liczniki energii nietknięte, historii nie wgrywamy ponownie (K2R-D2).
 Bez tych dat symulator kończy się kodem 2 z komunikatem, co ustawić.
+
+**Okna symulatora w `data_windows` (E3-k4).** Każde okno to nowa migracja z `INSERT` (jak 005/006/010/011), granice z bazy:
+- `sim_reset` – wymiana łożyska (K2R-D2): start = chwila, od której obowiązuje nowa `bearing_installed_at` we wdrożonym configu
+  (pierwszy wiersz `vibration_rms` pompy po odtworzeniu kontenera symulatora), koniec = start + 1 min, `exclude_from_analytics = TRUE`
+  (etap 5 dzieli trend drgań na tej granicy);
+- `sim_backfill` – wgrywanie historii (k5): od początku do końca wgrywania; `exclude_from_analytics = FALSE` (tylko adnotacja
+  o nietypowym obciążeniu komputera, K4-U3), chyba że w tym czasie zginą dane prawdziwe – wtedy osobne okno jak przy przerwach.
+
+```sql
+-- 0NN_data_windows_sim_reset.sql (szablon; granice wpisać z bazy)
+INSERT INTO data_windows (start_time, end_time, kind, description, exclude_from_analytics) VALUES
+    ('<start>+00', '<start + 1 min>+00', 'sim_reset', 'Wymiana łożyska pompy symulatora (nowa bearing_installed_at)', TRUE);
+-- 0NN_data_windows_sim_backfill.sql
+INSERT INTO data_windows (start_time, end_time, kind, description, exclude_from_analytics) VALUES
+    ('<początek>+00', '<koniec>+00', 'sim_backfill', 'Wgrywanie historii symulatora (obciążenie komputera)', FALSE);
+```
 
 **Pamięć sum dobowych (K2R-D3).** Plik `/var/lib/simulator/energy-days.json` w wolumenie `aip_simulator_data` (jedyne miejsce
 zapisu, kontener `read_only`): sumy W·s każdej doby od kotwicy dla czterech liczników. Przyspiesza start (bez pliku liczniki
