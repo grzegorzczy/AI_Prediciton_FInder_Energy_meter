@@ -51,6 +51,26 @@ def query(name, title, start, end, overrides=None, ref=0):
     return result
 
 
+def series(result) -> dict[str, tuple[list, list]]:
+    """{nazwa serii: (czasy ms, wartości)} ze wszystkich ramek wyniku (Grafana dzieli serie na ramki; nazwa z displayNameFromDS,
+    etykiety `metric` albo nazwy pola)."""
+    out = {}
+    for f in result["frames"]:
+        fields, values = f["schema"]["fields"], f["data"]["values"]
+        times = next((values[i] for i, fl in enumerate(fields) if fl.get("type") == "time"), None)
+        for i, fl in enumerate(fields):
+            if fl.get("type") == "time":
+                continue
+            name = ((fl.get("config") or {}).get("displayNameFromDS") or (fl.get("labels") or {}).get("metric") or fl["name"])
+            out[name] = (times, values[i])
+    return out
+
+
+def describe(result) -> str:
+    return str([[(fl["name"], fl.get("type"), fl.get("labels"), (fl.get("config") or {}).get("displayNameFromDS"))
+                 for fl in f["schema"]["fields"]] for f in result["frames"]])[:1500]
+
+
 def columns(result, frame=0):
     f = result["frames"][frame]
     return {field["name"]: values for field, values in zip(f["schema"]["fields"], f["data"]["values"])}
@@ -102,9 +122,12 @@ def test_device_variables_label_only_simulated_devices_and_keep_values(sim_histo
 def test_vibration_trend_uses_only_running_minutes_and_rises(sim_history):
     now = time.time()
     title = next(p["title"] for p in DASHES["pompa"]["panels"] if p["title"].startswith("Trend drgań"))
-    rows = columns(query("pompa", title, now - 3600, now))                                 # własny zakres: 90 dni
-    days, vib, minutes = rows["time"], rows["Drgania (średnia doby pracy)"], rows["Minuty pracy"]
-    assert 65 <= len(days) <= 74                                                            # 84 doby historii bez 12 niedziel
+    result = query("pompa", title, now - 3600, now)                                       # własny zakres: 90 dni
+    found = series(result)
+    assert {"Drgania (średnia doby pracy)", "Minuty pracy"} <= set(found), describe(result)
+    days, vib = found["Drgania (średnia doby pracy)"]
+    minutes = found["Minuty pracy"][1]
+    assert 65 <= len(days) <= 74, len(days)                                                # 84 doby historii bez 12 niedziel
     assert all(m <= 16 * 60 for m in minutes)                                               # najdłuższa zmiana 06–22
     first, last = sum(vib[:6]) / 6, sum(vib[-6:]) / 6
     assert last > first * 1.3, (first, last)                                                # model: x od 0 do 0,70
@@ -113,9 +136,12 @@ def test_vibration_trend_uses_only_running_minutes_and_rises(sim_history):
 def test_minute_vibration_is_empty_when_the_pump_stands(sim_history):
     end = sim_history["end"]
     start = end - 2 * 86400
-    vib = columns(query("pompa", "Drgania – minuty pracy", start, end))
-    speed = columns(query("pompa", "Obroty", start, end))
-    pairs = list(zip(vib["Drgania (praca)"], speed["Obroty"]))
+    vib_result, speed_result = query("pompa", "Drgania – minuty pracy", start, end), query("pompa", "Obroty", start, end)
+    vib, speed = series(vib_result), series(speed_result)
+    assert len(vib) == 1 and len(speed) == 1, (describe(vib_result), describe(speed_result))
+    (vt, vv), (st, sv) = next(iter(vib.values())), next(iter(speed.values()))
+    by_time = dict(zip(st, sv))
+    pairs = [(v, by_time.get(t)) for t, v in zip(vt, vv)]
     assert any(s == 0 for _, s in pairs) and any(s and s > 0 for _, s in pairs)
     assert all(v is None for v, s in pairs if s == 0), "w postoju drgania muszą być puste, nie zero"
     assert all(v is not None and v > 0 for v, s in pairs if s and s > 2000)
@@ -125,15 +151,8 @@ def test_fleet_freshness_axis_shows_missing_data_before_the_history(sim_history)
     """Liczniki sim mają dane tylko z ostatnich 2 h: wcześniej oś pokazuje „Brak danych” (0), w ostatnich 2 h „Dane” (2)."""
     end = sim_history["end"]
     result = query("flota", "Świeżość danych w czasie", end - 6 * 3600, end)
-    frames = result["frames"]
-    states = {}
-    for f in frames:
-        fields = f["schema"]["fields"]
-        label = ((fields[1].get("labels") or {}).get("metric") or (fields[1].get("config") or {}).get("displayNameFromDS")
-                 or fields[1]["name"])
-        states[label] = f["data"]["values"]
-    sim = {k: v for k, v in states.items() if "SYMULACJA" in k}
-    assert sim, states.keys()
+    sim = {k: v for k, v in series(result).items() if "SYMULACJA" in k}
+    assert len(sim) == 4, describe(result)
     for label, (times, values) in sim.items():
         before = [v for t, v in zip(times, values) if t / 1000 < sim_history["anchor"] - 120]
         after = [v for t, v in zip(times, values) if sim_history["anchor"] + 120 <= t / 1000 < end - 120]

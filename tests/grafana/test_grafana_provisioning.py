@@ -11,7 +11,8 @@ from grafana_support import api, dashboards, ds_query
 def test_dashboards_are_provisioned_into_the_folder(grafana_data):
     status, found = api("GET", "/api/search?type=dash-db")
     assert status == 200
-    assert {d["uid"] for d in found} == {"aip-przeglad", "aip-na-zywo", "aip-jakosc", "aip-energia", "aip-diagnostyka"}
+    assert {d["uid"] for d in found} == {"aip-przeglad", "aip-na-zywo", "aip-jakosc", "aip-energia", "aip-diagnostyka",
+                                         "aip-flota", "aip-pompa"}
     assert {d["folderTitle"] for d in found} == {"AI Predykcja"}
 
 
@@ -60,8 +61,11 @@ def test_device_variable_lists_both_meters(grafana_data):
 
 
 def test_device_variable_query_in_dashboards_is_the_same(grafana_data):
-    for dash in dashboards().values():
-        assert dash["templating"]["list"][0]["query"].startswith("SELECT device_id AS __value, name AS __text FROM devices")
+    """Lista urządzeń: wartość device_id, etykieta z dopiskiem SYMULACJA z devices.source (E3-k6, S10)."""
+    label = "name || CASE WHEN source = 'sim' THEN ' (SYMULACJA)' ELSE '' END"
+    for name, dash in dashboards().items():
+        variable = next(v for v in dash["templating"]["list"] if v["type"] == "query")
+        assert variable["query"].startswith(f"SELECT device_id AS __value, {label} AS __text FROM devices"), name
 
 
 def test_annotation_query_returns_the_known_windows(grafana_data):
