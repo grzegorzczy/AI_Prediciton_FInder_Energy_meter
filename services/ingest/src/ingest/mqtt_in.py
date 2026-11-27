@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 import time
+from collections.abc import Callable
 
 import paho.mqtt.client as mqtt
 
@@ -20,9 +22,21 @@ TOPIC_FILTER = "+/+/+/+"
 
 
 class MqttInput:
-    def __init__(self, host: str, port: int, user: str, password: str, client_id: str = "aip-ingest") -> None:
+    def __init__(self, host: str, port: int, user: str, password: str, client_id: str = "aip-ingest",
+                 droppable: Callable[[str, int], bool] | None = None, droppable_max: int = 3000) -> None:
         self._host, self._port = host, port
         self._queue: queue.Queue[Incoming] = queue.Queue(maxsize=5000)
+        # E3-k4 (przegląd): limit danych sim także w kolejce wejściowej. Przy wolnej bazie zaległość gromadzi się tutaj, a nie
+        # w potoku; bez limitu wiadomości QoS 0 symulatora zapełniłyby kolejkę (5000) i zablokowały wątek sieciowy paho
+        # (put), czyli także dane prawdziwe. `droppable(topic, qos)` = wiadomość urządzenia sim z QoS 0 (z configu).
+        if droppable_max < 1:
+            raise ValueError("droppable_max musi być >= 1")
+        self._droppable = droppable or (lambda topic, qos: False)
+        self._droppable_max = droppable_max
+        self._droppable_in_queue = 0
+        self._lock = threading.Lock()
+        self.sim_dropped_total = 0
+        self._sim_drop_episode = 0
         self.received_total = 0
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=False,
@@ -57,7 +71,21 @@ class MqttInput:
 
     def _on_message(self, client, userdata, message) -> None:
         self.received_total += 1
-        self._queue.put(Incoming(message.topic, bytes(message.payload), (message.mid, message.qos), message.qos))
+        droppable = self._droppable(message.topic, message.qos)
+        if droppable:
+            with self._lock:
+                if self._droppable_in_queue >= self._droppable_max:
+                    self.sim_dropped_total += 1
+                    if self._sim_drop_episode == 0:
+                        LOG.warning("kolejka wejściowa: %d wiadomości symulatora (QoS 0) czeka na zapis – odrzucam kolejne "
+                                    "(limit INGEST_SIM_PENDING_MAX); dane prawdziwe bez zmian", self._droppable_in_queue)
+                    self._sim_drop_episode += 1
+                    return                                  # QoS 0: nie ma czego potwierdzać
+                self._droppable_in_queue += 1
+                if self._sim_drop_episode:
+                    LOG.warning("kolejka wejściowa: koniec odrzucania danych symulatora, odrzucono %d", self._sim_drop_episode)
+                    self._sim_drop_episode = 0
+        self._queue.put(Incoming(message.topic, bytes(message.payload), (message.mid, message.qos), message.qos, droppable))
 
     def start(self) -> None:
         self._client.connect_async(self._host, self._port, keepalive=30)
@@ -71,9 +99,13 @@ class MqttInput:
 
     def get(self, timeout: float) -> Incoming | None:
         try:
-            return self._queue.get(timeout=timeout)
+            item = self._queue.get(timeout=timeout)
         except queue.Empty:
             return None
+        if item.droppable:
+            with self._lock:
+                self._droppable_in_queue -= 1
+        return item
 
     def ack(self, token) -> None:
         mid, qos = token

@@ -138,7 +138,8 @@ def test_refresh_and_insert_into_compressed_chunks(pg, migrated_db):
                      (old + timedelta(days=15),))
         compressed = conn.execute("SELECT hypertable_name, count(*) FILTER (WHERE is_compressed) FROM timescaledb_information.chunks "
                                   "GROUP BY 1").fetchall()
-        assert all(n >= 1 for _, n in compressed if _ in ("measurements", mat.split(".")[1])), compressed
+        counts = dict(compressed)
+        assert counts.get("measurements", 0) >= 1 and counts.get(mat.split(".")[1], 0) >= 1, compressed
         # (b) wstawienie do skompresowanego chunku measurements (minuta obok)
         pump_minute(conn, old + MIN, speed_expr="0", vib="0.1")
         # (a) odświeżenie zakresu ze skompresowanym chunkiem pump_1m

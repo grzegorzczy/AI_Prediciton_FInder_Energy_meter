@@ -108,15 +108,22 @@ def main() -> int:
         dbname=os.environ.get("DB_NAME", "energy"), user=os.environ.get("DB_USER", "app_writer"),
         password=db_password,
     )
+    sim_max = int(os.environ.get("INGEST_SIM_PENDING_MAX", "3000"))
+    if sim_max < 1:
+        LOG.error("INGEST_SIM_PENDING_MAX=%d: wymagana liczba >= 1", sim_max)
+        return 2
+    sim_devices = {d for d, spec in config.devices.items() if spec.source == "sim"}
     source = MqttInput(os.environ.get("MQTT_HOST", "mosquitto"), int(os.environ.get("MQTT_PORT", "1883")),
-                       mqtt_user, mqtt_password, client_id=os.environ.get("INGEST_CLIENT_ID", "aip-ingest"))
+                       mqtt_user, mqtt_password, client_id=os.environ.get("INGEST_CLIENT_ID", "aip-ingest"),
+                       droppable=lambda topic, qos: qos == 0 and topic.count("/") == 3 and topic.split("/")[2] in sim_devices,
+                       droppable_max=sim_max)
     pipeline = Pipeline(
         config, store, ack=source.ack,
         batch_max=int(os.environ.get("INGEST_BATCH_MAX", "100")),
         flush_s=float(os.environ.get("INGEST_FLUSH_S", "1.0")),
         max_future_s=float(os.environ.get("INGEST_MAX_FUTURE_S", "300")),
         max_past_days=float(os.environ.get("INGEST_MAX_PAST_DAYS", "400")),
-        sim_pending_max=int(os.environ.get("INGEST_SIM_PENDING_MAX", "3000")),
+        sim_pending_max=sim_max,
     )
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):

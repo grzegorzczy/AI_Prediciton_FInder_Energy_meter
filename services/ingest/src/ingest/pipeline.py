@@ -38,6 +38,7 @@ class Incoming:
     payload: bytes
     token: Any                      # np. (mid, qos) z paho; przekazywany do ack()
     qos: int = 1                    # QoS dostarczenia; 0 = dane symulatora (odrzucane przy niedostępnej bazie)
+    droppable: bool = False         # wiadomość urządzenia sim z QoS 0 (liczona w limicie kolejki wejściowej)
 
 
 @dataclass
@@ -87,6 +88,8 @@ class Pipeline:
         self._retry_at = 0.0
         self._db_down_since: float | None = None
         self._last_down_log = 0.0
+        if sim_pending_max < 1:
+            raise ValueError("sim_pending_max musi być >= 1")
         self._sim_pending_max = sim_pending_max
         self._pending_sim = 0                     # wiersze sim w self._pending
         self._sim_drop_episode = 0                # odrzucone w bieżącym epizodzie (0 = brak epizodu)

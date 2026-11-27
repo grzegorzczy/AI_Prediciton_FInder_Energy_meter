@@ -354,7 +354,10 @@ kolejki sesji, a ponowne dostarczenie nie tworzy duplikatów (`ON CONFLICT DO NO
 dociera najwyżej 100 niepotwierdzonych wiadomości **QoS 1** (`max_inflight_messages`), reszta czeka w kolejce sesji w brokerze.
 Wiadomości QoS 0 limit ten nie obejmuje, dlatego ingest ma **limit danych symulatora** (E3-k4, K4-D1): wiersz urządzenia
 `source = sim` dostarczony z QoS 0 jest odrzucany, gdy baza jest niedostępna albo w pamięci czeka już `INGEST_SIM_PENDING_MAX`
-(3 000, ok. 100 s) wierszy sim. Dane real nie są odrzucane nigdy (także z QoS 0); wiersze sim z QoS 1 (wgrywanie historii) też nie.
+(3 000, ok. 100 s) wierszy sim. Ten sam limit obowiązuje w kolejce wejściowej MQTT ingestu: przy wolnej, ale dostępnej bazie
+zaległość gromadzi się tam (potok zapisuje paczkami po 100), więc ponad 3 000 wiadomości sim w kolejce jest odrzucanych, a kolejka
+(5 000) nie zapełnia się i nie blokuje odbioru danych prawdziwych. Dane real nie są odrzucane nigdy (także z QoS 0); wiersze sim
+z QoS 1 (wgrywanie historii) też nie.
 W logu jeden WARNING na początku epizodu (z przyczyną) i jeden na końcu (liczba odrzuconych, czas trwania). Dla
 demo akceptowalne; przy dłuższych przerwach trzeba liczyć się z luką w danych.
 
