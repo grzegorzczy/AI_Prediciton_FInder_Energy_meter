@@ -410,3 +410,26 @@ def test_fleet_long_ranges_read_aggregates():
         sql = target["rawSql"]
         if "FROM measurements" in sql:
             assert "interval '1 hour'" in sql and "$__timeFilter" not in sql, f"{title}: surowe dane tylko z ostatniej godziny"
+
+
+def test_k6b_visual_fixes():
+    """K6R-V1, V2, V4, V5, V6 (przegląd zrzutów k6)."""
+    generator = load_generator()
+    fleet, pump = dashboards()["flota"], dashboards()["pompa"]
+    trend = next(p for p in pump["panels"] if p["title"].startswith("Trend drgań"))
+    assert trend["timeFrom"] == f"{generator.TREND_DAYS}d" and trend["hideTimeOverride"] is False          # V1: oś 90 dni
+    fresh = next(p for p in fleet["panels"] if p["title"] == "Świeżość danych w czasie")["targets"][0]["rawSql"]
+    assert "<= (SELECT min(f.bucket) FROM energy_1m f WHERE f.device_id = d.device_id) THEN NULL" in fresh   # V2
+    for dash in (fleet, pump):
+        banner = next(p for p in dash["panels"] if p["type"] == "text")
+        assert banner["gridPos"]["h"] >= 3 and len(banner["options"]["content"]) <= 130                      # V4: bez przewijania
+    units = {json.dumps(p["fieldConfig"], ensure_ascii=False) for p in pump["panels"] + fleet["panels"]}
+    assert not any('"rpm"' in u or '"kwatth"' in u for u in units)                                         # V5, V6
+    speed = [p for p in pump["panels"] if p["title"] in ("Obroty", "Obroty teraz")]
+    assert len(speed) == 2 and all(p["fieldConfig"]["defaults"]["unit"] == "suffix: obr/min" for p in speed)
+    table = next(p for p in fleet["panels"] if p["title"] == "Liczniki floty")
+    energy = next(o for o in table["fieldConfig"]["overrides"] if o["matcher"]["options"] == "Energia od północy")
+    assert {"id": "unit", "value": "suffix: kWh"} in energy["properties"] and {"id": "decimals", "value": 3} in energy["properties"]
+    for title in ("Udział w energii zakresu", "Świeżość danych w czasie"):                                  # V3: etykiety osi z odstępem
+        sql = next(p for p in fleet["panels"] if p["title"] == title)["targets"][0]["rawSql"]
+        assert generator.D_AXIS_LABEL in sql, title

@@ -36,8 +36,8 @@ NO_METER_CODE = 101         # PLC działa, ale licznik nie ma świeżego statusu
 # Etykieta urządzenia z dopiskiem SYMULACJA wyliczanym z devices.source (S10): żadnych nazw urządzeń w generatorze (zasada 3).
 SIM_MARK = "SYMULACJA"
 SIM_LABEL = f"name || CASE WHEN source = 'sim' THEN ' ({SIM_MARK})' ELSE '' END"
-SIM_BANNER = (f"**Urządzenia oznaczone „{SIM_MARK}” pokazują dane symulowane** (`source = sim`: wirtualne liczniki i pompa "
-              "z symulatora, nie pomiary z maszyn). Urządzenia bez dopisku to pomiary prawdziwe.")
+SIM_BANNER = (f"**„{SIM_MARK}” = dane z symulatora**, nie pomiar z maszyny (`source = sim`). "
+              "Urządzenia bez dopisku to pomiary prawdziwe.")          # 1 linia bez przewijania (K6R-V4)
 
 ANNOTATION_SQL = (
     'SELECT start_time AS time, end_time AS "timeEnd", kind AS tags, description AS text FROM data_windows '
@@ -749,6 +749,12 @@ def diagnostics() -> Dash:
 METERS = "d.kind = 'energy_meter' AND d.enabled"
 D_POLL = "(d.meta ->> 'poll_interval_s')::float8"
 D_LABEL = SIM_LABEL.replace("name", "d.name").replace("source", "d.source")
+# K6R-V3: Grafana mierzy etykiety osi kategorii (oś wierszy osi stanów, oś kategorii wykresu słupkowego) o kilka pikseli za wąsko
+# i najszerszej etykiecie ucina pierwszą literę; tych osi nie da się poszerzyć opcją. Dwie spacje cyfrowe (U+2007) z przodu
+# poszerzają wyliczoną oś; etykieta wyrównana do prawej, więc odstęp jest niewidoczny.
+AXIS_PAD = "repeat(chr(8199), 2) || "
+D_AXIS_LABEL = AXIS_PAD + "(" + D_LABEL + ")"
+KWH = "suffix: kWh"               # K6R-V6: stała jednostka w kWh (jednostka "kwatth" przełączała małe wartości na Wh)
 FRESH_MAP = mapping({2: "Dane", 1: "Dane niepełne", 0: "Brak danych"})
 for _code, _color in {2: "green", 1: "orange", 0: "red"}.items():
     FRESH_MAP[0]["options"][str(_code)]["color"] = _color
@@ -757,17 +763,19 @@ for _code, _color in {2: "green", 1: "orange", 0: "red"}.items():
 def banner(d: Dash) -> None:
     panel = _panel("text", "Dane symulowane", "Objaśnienie znacznika SYMULACJA (S10).", [],
                    options={"mode": "markdown", "content": SIM_BANNER})
-    d.add(panel, 24, 2, new_row=True)
+    d.add(panel, 24, 3, new_row=True)
 
 
 def coverage_states(device_filter: str, label: str, poll: str, source: str, n_col: str) -> str:
     """Oś stanów świeżości/pokrycia: kubełki co max($__interval, 1 min) wygenerowane w SQL (brak wiersza w agregacie = „Brak danych”,
-    a nie przerwa w osi), na urządzenie. Kubełek w toku liczony tylko z upłyniętej części."""
+    a nie przerwa w osi), na urządzenie. Kubełek w toku liczony tylko z upłyniętej części. Kubełki w całości przed pierwszym odczytem
+    urządzenia nie mają stanu (NULL, przezroczyste; K6R-V2): urządzenie, którego jeszcze nie było, nie jest awarią."""
     return (f"WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), "
             f"b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), "
             f"a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum({n_col}) AS n FROM {source}, s "
             f"WHERE $__timeFilter(bucket) GROUP BY 1, 2) "
             f"SELECT b.t AS time, {label} AS metric, CASE "
+            f"WHEN b.t + s.step <= (SELECT min(f.bucket) FROM {source} f WHERE f.device_id = d.device_id) THEN NULL "
             f"WHEN coalesce(a.n, 0) * {poll} >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 "
             f"WHEN coalesce(a.n, 0) > 0 THEN 1 ELSE 0 END AS value "
             f"FROM b CROSS JOIN s CROSS JOIN devices d LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id "
@@ -812,7 +820,7 @@ def fleet() -> Dash:
                             "Brak danych": {"text": "Brak danych", "color": "red", "index": 1}}}]}]},
                     {"matcher": {"id": "byName", "options": "Wiek odczytu"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 0}]},
                     {"matcher": {"id": "byName", "options": "Moc teraz"}, "properties": [{"id": "unit", "value": "watt"}]},
-                    {"matcher": {"id": "byName", "options": "Energia od północy"}, "properties": [{"id": "unit", "value": "kwatth"}, {"id": "decimals", "value": 2}]},
+                    {"matcher": {"id": "byName", "options": "Energia od północy"}, "properties": [{"id": "unit", "value": KWH}, {"id": "decimals", "value": 3}]},
                 ]), 24, 7, new_row=True)
     d.add(timeseries("Moc czynna – flota",
                      "Średnia moc czynna [W] każdego licznika w kroku wykresu, z agregatu minutowego. Luki dłuższe niż 2,5 min przerywają linię "
@@ -826,27 +834,28 @@ def fleet() -> Dash:
                         "Z całki mocy: przy lukach dolna granica.",
                         [target(f"SELECT e.bucket AS time, {D_LABEL} AS metric, e.active_power_sum * {D_POLL} / 3600000.0 AS value "
                                 f"FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND {METERS} ORDER BY 1")],
-                        unit="kwatth", bars=True, span_ms=9000000, decimals=2, min_=0)
+                        unit=KWH, bars=True, span_ms=9000000, decimals=2, min_=0)
     hourly["fieldConfig"]["defaults"]["custom"]["stacking"] = {"mode": "normal", "group": "A"}
     d.add(hourly, 12, 8, new_row=True)
     d.add(_panel("barchart", "Udział w energii zakresu",
                  "Energia czynna [kWh] każdego licznika w wybranym zakresie czasu (pełne godziny z agregatu godzinnego, z całki mocy).",
-                 [target(f"SELECT {D_LABEL} AS \"Urządzenie\", sum(e.active_power_sum * {D_POLL}) / 3600000.0 AS \"Energia [kWh]\" "
+                 [target(f"SELECT {D_AXIS_LABEL} AS \"Urządzenie\", sum(e.active_power_sum * {D_POLL}) / 3600000.0 AS \"Energia [kWh]\" "
                          f"FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND {METERS} "
                          "GROUP BY 1 ORDER BY 2 DESC", "table")],
-                 unit="kwatth", decimals=2, min_=0, custom={"fillOpacity": 80},
+                 unit=KWH, decimals=2, min_=0, custom={"fillOpacity": 80},
                  options={"orientation": "horizontal", "showValue": "always", "stacking": "none",
                           "legend": {"showLegend": False}, "tooltip": {"mode": "single"}}), 12, 8)
     d.add(state_timeline("Świeżość danych w czasie",
                          "Dla każdego licznika i kroku osi (co najmniej 1 min): „Dane” – pomiar mocy przez co najmniej 95% kroku, „Dane niepełne” – część "
-                         "kroku bez pomiaru, „Brak danych” – żadnego pomiaru. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
-                         [target(coverage_states(METERS, D_LABEL, D_POLL, "energy_1m", "active_power_n"))], FRESH_MAP), 24, 8, new_row=True)
+                         "kroku bez pomiaru, „Brak danych” – żadnego pomiaru po pierwszym odczycie; przed pierwszym odczytem licznika oś jest pusta. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
+                         [target(coverage_states(METERS, D_AXIS_LABEL, D_POLL, "energy_1m", "active_power_n"))], FRESH_MAP), 24, 8, new_row=True)
     return d
 
 
 # --- 7. Pompa (E3-k6) --------------------------------------------------------------------------------------------------------
 
 PUMP = "device_id = '$pump'"
+RPM_UNIT = "suffix: obr/min"     # K6R-V5: pełna liczba bez skrótu tysięcy (jednostka "rpm" dawała „3K rd/m”); dane nadal w rpm
 TREND_DAYS = 90                  # własny zakres trendu drgań (S9, plan k6); 84 dni historii mieszczą się w nim
 TREND_MARKER = f"now() - interval '{TREND_DAYS} days'"
 RUN_NOTE = ("Minuta pracy (K4-D2): wszystkie próbki obrotów w minucie > 0; minuty postoju i częściowe (start, koniec zmiany) nie wchodzą "
@@ -874,7 +883,7 @@ def pump() -> Dash:
                "Ostatnia średnia minutowa obrotów [obr/min] z ostatnich 10 minut (0 = postój).",
                [target(f"SELECT bucket AS time, speed_avg AS \"Obroty\" FROM pump_1m_calc WHERE {PUMP} "
                        "AND bucket > now() - interval '10 minutes' ORDER BY bucket")],
-               unit="rpm", decimals=0, color_mode="none"), 6, 4)
+               unit=RPM_UNIT, decimals=0, color_mode="none"), 6, 4)
     d.add(stat("Minuty pracy dziś",
                "Liczba minut pracy od północy (czas lokalny). " + RUN_NOTE,
                [target(f"SELECT now() AS time, count(*) FILTER (WHERE running) AS \"Minuty pracy\" FROM pump_1m_calc WHERE {PUMP} "
@@ -891,6 +900,9 @@ def pump() -> Dash:
                            COVERAGE_AXIS, {"id": "unit", "value": "none"}, {"id": "custom.drawStyle", "value": "bars"},
                            {"id": "custom.fillOpacity", "value": 25}, {"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}}]}])
     trend["fieldConfig"]["defaults"]["custom"]["showPoints"] = "always"
+    # K6R-V1: oś 90 dni przez `timeFrom` (działa przy względnym zakresie pulpitu), dane 90 dni w SQL (także przy bezwzględnym,
+    # gdy Grafana pomija `timeFrom`; wtedy oś jest zakresem pulpitu).
+    trend["timeFrom"], trend["hideTimeOverride"] = f"{TREND_DAYS}d", False
     d.add(trend, 24, 9, new_row=True)
     d.add(timeseries("Drgania – minuty pracy",
                      "Drgania RMS [mm/s] w kroku wykresu, średnia tylko z minut pracy; postoje i minuty częściowe są puste (przerwa w linii, nie zero). "
@@ -902,7 +914,7 @@ def pump() -> Dash:
                      "Obroty [obr/min] w kroku wykresu, wszystkie minuty: 0 = postój. Pokazuje, kiedy pompa pracowała.",
                      [target(f"SELECT $__timeGroupAlias(bucket, $__interval), avg(speed_avg) AS \"Obroty\" "
                              f"FROM pump_1m_calc WHERE $__timeFilter(bucket) AND {PUMP} GROUP BY 1 ORDER BY 1")],
-                     unit="rpm", span_ms=150000, decimals=0, min_=0), 12, 8)
+                     unit=RPM_UNIT, span_ms=150000, decimals=0, min_=0), 12, 8)
     for title, column, unit, desc in (
             ("Temperatura łożyska", "bearing_temperature_avg", "celsius", "Temperatura łożyska [°C], średnia w kroku wykresu, wszystkie minuty."),
             ("Prąd silnika", "motor_current_avg", "amp", "Prąd silnika [A], średnia w kroku wykresu, wszystkie minuty (0 = postój)."),

@@ -119,10 +119,18 @@ def test_device_variables_label_only_simulated_devices_and_keep_values(sim_histo
     assert pairs["finder_7m24_1"] == "Licznik 1" and pairs["finder_7m24_2"] == "Licznik 2"      # Finder bez zmian
 
 
-def test_vibration_trend_uses_only_running_minutes_and_rises(sim_history):
+@pytest.mark.parametrize("range_name", ["6h", "24h", "7d", "absolute"])
+def test_vibration_trend_uses_only_running_minutes_and_rises(sim_history, range_name):
+    """K6R-V1: zawsze 90 dni od teraz. Względny zakres pulpitu: Grafana podstawia `timeFrom` (90 d); bezwzględny (np. sprzed
+    30 dni, 1 h): `timeFrom` pominięty, zakres pulpitu trafia do zapytania, a SQL i tak liczy 90 dni od teraz."""
     now = time.time()
-    title = next(p["title"] for p in DASHES["pompa"]["panels"] if p["title"].startswith("Trend drgań"))
-    result = query("pompa", title, now - 3600, now)                                       # własny zakres: 90 dni
+    panel = next(p for p in DASHES["pompa"]["panels"] if p["title"].startswith("Trend drgań"))
+    if range_name == "absolute":
+        start, end = now - 30 * 86400, now - 30 * 86400 + 3600
+    else:
+        start, end = now - effective_seconds(panel, ALL_RANGES[range_name]), now
+        assert end - start == 90 * 86400
+    result = query("pompa", panel["title"], start, end)
     found = series(result)
     assert {"Drgania (średnia doby pracy)", "Minuty pracy"} <= set(found), describe(result)
     days, vib = found["Drgania (średnia doby pracy)"]
@@ -147,8 +155,9 @@ def test_minute_vibration_is_empty_when_the_pump_stands(sim_history):
     assert all(v is not None and v > 0 for v, s in pairs if s and s > 2000)
 
 
-def test_fleet_freshness_axis_shows_missing_data_before_the_history(sim_history):
-    """Liczniki sim mają dane tylko z ostatnich 2 h: wcześniej oś pokazuje „Brak danych” (0), w ostatnich 2 h „Dane” (2)."""
+def test_fleet_freshness_axis_is_empty_before_the_first_reading(sim_history):
+    """Liczniki sim mają dane tylko z ostatnich 2 h: wcześniej oś jest pusta (NULL, K6R-V2: przed pierwszym odczytem to nie
+    awaria), w ostatnich 2 h „Dane” (2)."""
     end = sim_history["end"]
     result = query("flota", "Świeżość danych w czasie", end - 6 * 3600, end)
     sim = {k: v for k, v in series(result).items() if "SYMULACJA" in k}
@@ -156,5 +165,5 @@ def test_fleet_freshness_axis_shows_missing_data_before_the_history(sim_history)
     for label, (times, values) in sim.items():
         before = [v for t, v in zip(times, values) if t / 1000 < sim_history["anchor"] - 120]
         after = [v for t, v in zip(times, values) if sim_history["anchor"] + 120 <= t / 1000 < end - 120]
-        assert before and set(before) == {0}, label
+        assert before and set(before) == {None}, label
         assert after and set(after) == {2}, label

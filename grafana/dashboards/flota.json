@@ -115,14 +115,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 2,
+        "h": 3,
         "w": 24,
         "x": 0,
         "y": 0
       },
       "id": 1,
       "options": {
-        "content": "**Urządzenia oznaczone „SYMULACJA” pokazują dane symulowane** (`source = sim`: wirtualne liczniki i pompa z symulatora, nie pomiary z maszyn). Urządzenia bez dopisku to pomiary prawdziwe.",
+        "content": "**„SYMULACJA” = dane z symulatora**, nie pomiar z maszyny (`source = sim`). Urządzenia bez dopisku to pomiary prawdziwe.",
         "mode": "markdown"
       },
       "targets": [],
@@ -248,11 +248,11 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "kwatth"
+                "value": "suffix: kWh"
               },
               {
                 "id": "decimals",
-                "value": 2
+                "value": 3
               }
             ]
           }
@@ -262,7 +262,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 2
+        "y": 3
       },
       "id": 2,
       "options": {
@@ -314,7 +314,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 10
       },
       "id": 3,
       "options": {
@@ -370,7 +370,7 @@
           },
           "decimals": 2,
           "min": 0,
-          "unit": "kwatth"
+          "unit": "suffix: kWh"
         },
         "overrides": []
       },
@@ -378,7 +378,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 18
       },
       "id": 4,
       "options": {
@@ -425,7 +425,7 @@
           },
           "decimals": 2,
           "min": 0,
-          "unit": "kwatth"
+          "unit": "suffix: kWh"
         },
         "overrides": []
       },
@@ -433,7 +433,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 18
       },
       "id": 5,
       "options": {
@@ -457,7 +457,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "SELECT d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS \"Urządzenie\", sum(e.active_power_sum * (d.meta ->> 'poll_interval_s')::float8) / 3600000.0 AS \"Energia [kWh]\" FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND d.kind = 'energy_meter' AND d.enabled GROUP BY 1 ORDER BY 2 DESC",
+          "rawSql": "SELECT repeat(chr(8199), 2) || (d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END) AS \"Urządzenie\", sum(e.active_power_sum * (d.meta ->> 'poll_interval_s')::float8) / 3600000.0 AS \"Energia [kWh]\" FROM energy_1h e JOIN devices d USING (device_id) WHERE $__timeFilter(e.bucket) AND d.kind = 'energy_meter' AND d.enabled GROUP BY 1 ORDER BY 2 DESC",
           "refId": "A"
         }
       ],
@@ -469,7 +469,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Dla każdego licznika i kroku osi (co najmniej 1 min): „Dane” – pomiar mocy przez co najmniej 95% kroku, „Dane niepełne” – część kroku bez pomiaru, „Brak danych” – żadnego pomiaru. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
+      "description": "Dla każdego licznika i kroku osi (co najmniej 1 min): „Dane” – pomiar mocy przez co najmniej 95% kroku, „Dane niepełne” – część kroku bez pomiaru, „Brak danych” – żadnego pomiaru po pierwszym odczycie; przed pierwszym odczytem licznika oś jest pusta. Z agregatu minutowego; krok w toku liczony z upłyniętej części.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -509,7 +509,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 26
       },
       "id": 6,
       "options": {
@@ -536,7 +536,7 @@
           "format": "time_series",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum(active_power_n) AS n FROM energy_1m, s WHERE $__timeFilter(bucket) GROUP BY 1, 2) SELECT b.t AS time, d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END AS metric, CASE WHEN coalesce(a.n, 0) * (d.meta ->> 'poll_interval_s')::float8 >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 WHEN coalesce(a.n, 0) > 0 THEN 1 ELSE 0 END AS value FROM b CROSS JOIN s CROSS JOIN devices d LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id WHERE d.kind = 'energy_meter' AND d.enabled AND b.t <= now() ORDER BY 1, 2",
+          "rawSql": "WITH s AS (SELECT make_interval(secs => greatest($__interval_ms / 1000.0, 60)) AS step), b AS (SELECT generate_series(time_bucket(s.step, $__timeFrom()::timestamptz), $__timeTo()::timestamptz, s.step) AS t FROM s), a AS (SELECT time_bucket(s.step, bucket) AS t, device_id, sum(active_power_n) AS n FROM energy_1m, s WHERE $__timeFilter(bucket) GROUP BY 1, 2) SELECT b.t AS time, repeat(chr(8199), 2) || (d.name || CASE WHEN d.source = 'sim' THEN ' (SYMULACJA)' ELSE '' END) AS metric, CASE WHEN b.t + s.step <= (SELECT min(f.bucket) FROM energy_1m f WHERE f.device_id = d.device_id) THEN NULL WHEN coalesce(a.n, 0) * (d.meta ->> 'poll_interval_s')::float8 >= 0.95 * extract(epoch FROM least(now(), b.t + s.step) - b.t) THEN 2 WHEN coalesce(a.n, 0) > 0 THEN 1 ELSE 0 END AS value FROM b CROSS JOIN s CROSS JOIN devices d LEFT JOIN a ON a.t = b.t AND a.device_id = d.device_id WHERE d.kind = 'energy_meter' AND d.enabled AND b.t <= now() ORDER BY 1, 2",
           "refId": "A"
         }
       ],
