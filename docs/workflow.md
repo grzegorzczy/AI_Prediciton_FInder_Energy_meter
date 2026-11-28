@@ -84,3 +84,8 @@ Werdykt: OK | OK Z UWAGAMI | DO POPRAWY
 - Spór między review a Claude Code rozstrzyga Grzegorz.
 - Ustalenie, które ma przetrwać etap, trafia też do `docs/decisions.md`
   (architekt zapisuje je dodatkowo jako dokument projektu).
+- Czekanie na długie zadania na IPC (testy, wgrywanie): pętla czekania ma limit czasu
+  (najwyżej 2× spodziewany czas zadania) i przerywa się przy błędzie ssh; po przerwaniu
+  Claude Code sprawdza stan zadania (log, `pgrep`) i podaje wynik albo powód zawieszenia,
+  zamiast czekać dalej. Wzór: `for i in $(seq 1 N); do ssh … 'grep -q "^EXIT=" log' && break || [ $? -eq 1 ] || exit; sleep 30; done`
+  (ssh zwraca 255 przy błędzie połączenia, grep 1 przy braku wyniku).

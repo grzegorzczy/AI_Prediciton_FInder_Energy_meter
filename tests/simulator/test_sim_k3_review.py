@@ -85,10 +85,9 @@ def write_config(tmp_path, raw):
     return str(path)
 
 
-def test_main_without_dates_exits_with_code_2(raw_file, tmp_path, monkeypatch, caplog):
-    import copy
-
-    monkeypatch.setenv("DEVICES_CONFIG", write_config(tmp_path, copy.deepcopy(raw_file)))     # daty null jak w repo
+def test_main_without_dates_exits_with_code_2(make_raw, tmp_path, monkeypatch, caplog):
+    # daty jawnie null (config sprzed k7); plik z repo ma daty od k7, więc main() wszedłby w pętlę na żywo i test by wisiał
+    monkeypatch.setenv("DEVICES_CONFIG", write_config(tmp_path, make_raw(meter_anchor=None, bearing=None)))
     monkeypatch.setenv("SIM_CACHE", "")
     with caplog.at_level(logging.ERROR, logger="simulator"):
         assert sim_main.main() == 2
