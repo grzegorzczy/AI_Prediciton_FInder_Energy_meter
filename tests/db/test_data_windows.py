@@ -35,7 +35,7 @@ def test_annotation_query_returns_the_windows_of_a_range(admin):
 
 
 def test_reader_reads_and_writer_and_reader_cannot_change(reader, writer):
-    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 14
+    assert reader.execute("SELECT count(*) FROM data_windows").fetchone()[0] == 15
     with pytest.raises(psycopg.Error):
         reader.execute("DELETE FROM data_windows")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
