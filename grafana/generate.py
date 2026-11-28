@@ -896,7 +896,7 @@ def pump() -> Dash:
                        f"AND bucket >= {LOCAL_MIDNIGHT}", "table")], decimals=0, color_mode="none"), 6, 4)
     trend = timeseries(f"Trend drgań z minut pracy (ostatnie {TREND_DAYS} dni)",
                        f"Średnia dobowa drgań RMS [mm/s] tylko z minut pracy (doba lokalna) i liczba minut pracy w dobie (prawa oś, pokrycie). "
-                       f"Zakres: ostatnie {TREND_DAYS} dni liczone od teraz, niezależnie od zakresu pulpitu. Doby bez pracy (np. niedziele) są puste. "
+                       f"Oś {TREND_DAYS} dni od teraz; przy zaznaczeniu fragmentu wykresu oś idzie za pulpitem (dane nadal {TREND_DAYS} dni, liczone od teraz, niezależnie od zakresu pulpitu). Doby bez pracy (np. niedziele) są puste. "
                        + RUN_NOTE,
                        [target(f"SELECT time_bucket('1 day', bucket, '{TZ}') AS time, avg(vibration_avg) AS \"Drgania (średnia doby pracy)\", "
                                f"count(*) AS \"Minuty pracy\" FROM pump_1m_calc WHERE {PUMP} AND running AND bucket >= {TREND_MARKER} "

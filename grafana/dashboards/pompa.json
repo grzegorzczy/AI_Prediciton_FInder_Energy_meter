@@ -346,7 +346,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "aip-timescaledb"
       },
-      "description": "Średnia dobowa drgań RMS [mm/s] tylko z minut pracy (doba lokalna) i liczba minut pracy w dobie (prawa oś, pokrycie). Zakres: ostatnie 90 dni liczone od teraz, niezależnie od zakresu pulpitu. Doby bez pracy (np. niedziele) są puste. Minuta pracy (K4-D2): wszystkie próbki obrotów w minucie > 0; minuty postoju i częściowe (start, koniec zmiany) nie wchodzą do drgań – drgania w postoju i rozruchu nie mówią o stanie łożyska.",
+      "description": "Średnia dobowa drgań RMS [mm/s] tylko z minut pracy (doba lokalna) i liczba minut pracy w dobie (prawa oś, pokrycie). Oś 90 dni od teraz; przy zaznaczeniu fragmentu wykresu oś idzie za pulpitem (dane nadal 90 dni, liczone od teraz, niezależnie od zakresu pulpitu). Doby bez pracy (np. niedziele) są puste. Minuta pracy (K4-D2): wszystkie próbki obrotów w minucie > 0; minuty postoju i częściowe (start, koniec zmiany) nie wchodzą do drgań – drgania w postoju i rozruchu nie mówią o stanie łożyska.",
       "fieldConfig": {
         "defaults": {
           "color": {

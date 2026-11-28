@@ -16,7 +16,7 @@ def test_seed_windows_are_present_and_consistent(admin):
     kinds = [r[0] for r in rows]
     assert kinds == ["collector_start", "calm_window", "mqtt_broker_restart", "collector_stopped", "rs485_break",
                      "plc_lan1_unplugged", "plc_program_stop", "power_outage", "collector_stopped", "plc_program_download",
-                     "deploy", "plc_program_download", "plc_program_download", "ipc_reboot"]
+                     "deploy", "plc_program_download", "plc_program_download", "ipc_reboot", "network_outage"]
     assert all(r[2] >= r[1] for r in rows)
     assert {r[0] for r in rows if not r[3]} == {"calm_window"}          # tylko okno referencyjne zostaje w analityce
 
@@ -85,6 +85,14 @@ def test_ipc_reboot_window_matches_the_measured_gap(admin):
     start, end = admin.execute("SELECT start_time, end_time FROM data_windows WHERE kind = 'ipc_reboot'").fetchone()
     assert start.isoformat().startswith("2026-11-25T12:03:47.557")
     assert end.isoformat().startswith("2026-11-25T12:04:24.705")
+
+
+def test_cable_move_window_matches_the_measured_gap(admin):
+    """E3-k7a: przełożenie kabla IPC do enp2s0 27.11 (013)."""
+    start, end, exclude = admin.execute("SELECT start_time, end_time, exclude_from_analytics FROM data_windows "
+                                        "WHERE kind = 'network_outage'").fetchone()
+    assert start.isoformat().startswith("2026-11-27T19:49:22.16") and end.isoformat().startswith("2026-11-27T19:49:35.155")
+    assert exclude is True
 
 
 

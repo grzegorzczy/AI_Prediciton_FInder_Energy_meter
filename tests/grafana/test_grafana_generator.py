@@ -418,6 +418,7 @@ def test_k6b_visual_fixes():
     fleet, pump = dashboards()["flota"], dashboards()["pompa"]
     trend = next(p for p in pump["panels"] if p["title"].startswith("Trend drgań"))
     assert trend["timeFrom"] == f"{generator.TREND_DAYS}d" and trend["hideTimeOverride"] is False          # V1: oś 90 dni
+    assert "przy zaznaczeniu fragmentu wykresu oś idzie za pulpitem" in trend["description"]            # K6bR: ograniczenie opisane
     fresh = next(p for p in fleet["panels"] if p["title"] == "Świeżość danych w czasie")["targets"][0]["rawSql"]
     assert "(SELECT min(x.bucket) FROM energy_1h x WHERE x.device_id = d.device_id) AS first_h" in fresh   # V2: raz na urządzenie
     assert "WHEN f.first IS NULL OR b.t + s.step <= f.first THEN NULL" in fresh and "f AS MATERIALIZED" in fresh   # raz, nie w każdym wierszu osi
