@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 
 import pytest
 
@@ -12,11 +13,13 @@ from simulator.samples import Simulator
 SIM_IDS = ["sim_pasteryzator", "sim_chlodnia", "sim_mieszalnik", "sim_pakowaczka", "sim_pump_p101"]
 
 
-def test_real_file_loads_with_five_devices_and_no_dates():
+def test_real_file_loads_with_five_devices_and_the_k7_dates():
     config = load_config(REPO / "config" / "devices.yaml")
     assert [d.device_id for d in config.devices] == SIM_IDS
     assert [d.model_type for d in config.devices] == ["thermostat", "compressor", "batch", "continuous", "pump"]
-    assert config.meter_anchor is None and config.device("sim_pump_p101").bearing_installed_at is None
+    # K2R-D1: daty ustawione we wdrożeniu k7 (28.11.2026): kotwica = −14 dni, montaż łożyska = −84 dni, obie o północy lokalnej
+    assert config.meter_anchor == datetime(2026, 11, 13, 23, tzinfo=timezone.utc)
+    assert config.device("sim_pump_p101").bearing_installed_at == datetime(2026, 9, 4, 22, tzinfo=timezone.utc)
     assert config.seed == 20261126 and (config.site, config.line) == ("zaklad1", "linia2")
     assert str(config.calendar.timezone) == "Europe/Warsaw"
     assert (config.history.meter_days, config.history.pump_step_s) == (14, 60)
@@ -31,7 +34,7 @@ def test_real_file_loads_with_five_devices_and_no_dates():
 
 def test_missing_dates_stop_the_simulator_with_a_clear_message(make_raw):
     """K1-U2 / K2R-D1: przy null nic nie podstawia „teraz”; tryb na żywo i historia nie wystartują."""
-    config = load_config(REPO / "config" / "devices.yaml")
+    config = load_config_dict(make_raw(meter_anchor=None, bearing=None))
     with pytest.raises(ConfigError) as error:
         config.require_meter_anchor()
     assert str(error.value) == ANCHOR_MISSING and "k7" in str(error.value)

@@ -79,7 +79,7 @@ simulator:
   site: zaklad1
   line: linia2                 # K0-D3: zaklad1/linia1 = prawdziwy sprzęt, zaklad1/linia2 = symulator
   poll_interval_s: 1.0         # okres próbek na żywo; trafia do devices.meta (widoki energii); symulator wymaga 1.0
-  meter_anchor: null           # K2R-D1: kotwica liczników energii (stan = energy_start_wh); w k7 = wdrożenie − 14 dni, potem stała
+  meter_anchor: "2026-11-13T23:00:00Z"   # K2R-D1: kotwica liczników (stan = energy_start_wh) = wdrożenie 28.11 − 14 dni (14.11 00:00 lokalnie); NIGDY nie zmieniać
   seed: 20261126               # ziarno szumu: zmiana = inne, ale powtarzalne dane
   calendar:                    # S2; czas lokalny z czasem letnim
     timezone: Europe/Warsaw
@@ -143,7 +143,7 @@ simulator:
       kind: pump
       source: sim
       rated_kw: 11
-      bearing_installed_at: null   # K2R-D1: montaż łożyska (x = 0); w k7 = wdrożenie − 84 dni (x = 0,70); wymiana = nowa data
+      bearing_installed_at: "2026-09-04T22:00:00Z"   # K2R-D1: montaż łożyska (x = 0) = wdrożenie 28.11 − 84 dni (05.09 00:00 lokalnie, x = 0,70); wymiana = nowa data + okno sim_reset
       model: { type: pump, schedule: shifts, speed_rpm: 2950, flow_m3_h: 40, current_a: 21,
                vibration_good_mm_s: 1.1, vibration_end_mm_s: 7.0, bearing_good_c: 52, bearing_end_c: 78,
                warmup_tau_min: 25, cooldown_tau_min: 40 }
