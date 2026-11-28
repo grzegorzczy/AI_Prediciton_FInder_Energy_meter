@@ -176,7 +176,7 @@ def _hhmm(value: Any, where: str) -> int:
 
 
 def _moment(value: Any, name: str) -> datetime | None:
-    """Data ISO 8601 ze strefą, pełna minuta; None = nieustawione (dozwolone w pliku do wdrożenia, k7)."""
+    """Data ISO 8601 ze strefą, pełna minuta; None = nieustawione (dozwolone w pliku; od wdrożenia k7 daty są ustawione)."""
     if value is None:
         return None
     if isinstance(value, datetime):            # YAML sam rozpoznaje znaczniki czasu
@@ -339,7 +339,7 @@ def load_config_dict(raw: dict) -> SimConfig:
     if len(ids) != len(set(ids)):
         raise ConfigError("simulator.devices: powtórzone id")
     if "meter_anchor" not in section:
-        raise ConfigError("brak pola 'meter_anchor' w sekcji simulator (null do wdrożenia, k7)")
+        raise ConfigError("brak pola 'meter_anchor' w sekcji simulator (null = config bez dat, symulator nie wystartuje)")
     return SimConfig(site, line, poll, _moment(section["meter_anchor"], "simulator.meter_anchor"), seed, _calendar(_need(section, "calendar", "simulator")),
                      ambient, electrical, history, degradation, devices)
 

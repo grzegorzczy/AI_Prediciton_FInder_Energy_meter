@@ -1,4 +1,4 @@
-"""Fixtury testów symulatora: config z prawdziwego devices.yaml z ustawionymi datami (w pliku są null do k7) i wspólna
+"""Fixtury testów symulatora: config z prawdziwego devices.yaml z ustawionymi datami (testy nie zależą od dat wdrożenia k7 w pliku) i wspólna
 pamięć sum dobowych na sesję testów (K2R-U5: nowe instancje nie liczą dób od zera)."""
 from __future__ import annotations
 

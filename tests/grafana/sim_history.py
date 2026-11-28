@@ -23,7 +23,7 @@ ISO = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def dated_config(anchor: int, bearing: int) -> dict:
-    """Surowy config z devices.yaml z ustawioną kotwicą liczników i montażem łożyska (w repo null do k7)."""
+    """Surowy config z devices.yaml z ustawioną kotwicą liczników i montażem łożyska (daty testu zamiast dat wdrożenia k7)."""
     raw = yaml.safe_load(DEVICES.read_text(encoding="utf-8"))
     section = raw["simulator"]
     section["meter_anchor"] = datetime.fromtimestamp(anchor, timezone.utc).strftime(ISO)

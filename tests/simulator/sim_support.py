@@ -17,7 +17,7 @@ def epoch(year, month, day, hour=0, minute=0, second=0, tz=timezone.utc) -> int:
 
 
 def set_dates(raw: dict, meter_anchor=METER_ANCHOR, bearing=BEARING_INSTALLED) -> dict:
-    """Ustawia w surowym configu obie daty (None = zostawia null, jak w repo do k7)."""
+    """Ustawia w surowym configu obie daty (None = null: config bez dat, jak przed wdrożeniem k7)."""
     section = raw["simulator"]
     section["meter_anchor"] = meter_anchor.strftime(ISO) if isinstance(meter_anchor, datetime) else meter_anchor
     for dev in section["devices"]:
