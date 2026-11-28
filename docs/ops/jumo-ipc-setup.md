@@ -481,6 +481,33 @@ pełna minuta, z logu symulatora; polecenia z `/home/jumo/ai-predykcja`):
    ```
 8. **Okno `sim_backfill`** (szablon wyżej) z granicami pierwszego i ostatniego uruchomienia z logów narzędzia.
 
+### Strażnik nocnego wgrywania (E3-k7, K7-U1)
+
+`docs/ops/backfill-guard.sh` – w tle na komputerze, bez `sudo`. Co 10 s mierzy i przy przekroczeniu zatrzymuje kontener
+wgrywania (`docker stop`), wznawia kompresję `measurements` i zapisuje przyczynę w `~/aip-k7/guard.log`:
+
+| Próg | Pomiar |
+| --- | --- |
+| dane real < 18 wierszy/s dłużej niż 60 s | wiersze `source = 'real'` w oknie 20 s, 5 s za „teraz” |
+| `aip-ingest` > 80 % limitu | pamięć anonimowa z cgroup (`memory.stat anon` / `memory.max`), bez pamięci podręcznej (K7B-D2) |
+| wolne miejsce < 3 × pozostała prognoza | `df /`; prognoza = doby od czasu modelu (linia „postęp” narzędzia) do `--to` × 400 MiB + 0,1 GiB (pompa) |
+| kolejka brokera dla ingestu > 20 000 w 3 pomiarach z rzędu | **szacunek**: broker nie podaje kolejki klienta (`$SYS` wyłączone), więc opóźnienie danych real w bazie × (tempo narzędzia + 49/s na żywo) – dane real stoją w tej samej kolejce FIFO; normalnie 0,4–2 s, czyli ok. 600–3 100; próg ≈ 12,6 s opóźnienia; liczona tylko, gdy dane real napływają (przerwa PLC/collectora to próg 1) |
+
+Wgrywanie zakończone kodem ≠ 0 też wznawia kompresję (K7-U2); po kodzie 0 kompresja zostaje wstrzymana do rana (pompa,
+odświeżenie, `--fill-gaps`, potem ręczne wznowienie). Test wszystkich progów: `sh tests/ops/guard-test.sh` (projekt `aip-test`).
+
+Noc k7 (z `/home/jumo/ai-predykcja`, po `git pull --ff-only`; kompresja wstrzymana wcześniej, krok 2):
+
+```bash
+mkdir -p ~/aip-k7 && : > ~/aip-k7/night.log        # pusty log: strażnik nie weźmie EXIT= z poprzedniego przebiegu
+(setsid nohup sh -c "docker compose run --rm -T --name aip-backfill-night simulator-tools python -m simulator.backfill --from 2026-11-13T23:00:00Z --to 2026-11-27T12:42:00Z --devices meters > ~/aip-k7/night.log 2>&1; echo EXIT=\$? >> ~/aip-k7/night.log" </dev/null >/dev/null 2>&1 &)
+(setsid nohup env GUARD_LOAD_LOG=$HOME/aip-k7/night.log GUARD_FROM=2026-11-13T23:00:00Z GUARD_TO=2026-11-27T12:42:00Z sh docs/ops/backfill-guard.sh </dev/null >>"$HOME/aip-k7/guard.err" 2>&1 &)
+tail -3 ~/aip-k7/guard.log ~/aip-k7/night.log      # podgląd
+```
+Zapytania strażnika mają limit 5 s (baza) i 15 s (proces); błędy skryptu w `~/aip-k7/guard.err`, koniec strażnika zawsze
+w `guard.log` („strażnik zakończony (kod N)”). Zatrzymanie: `docker stop -t 10` (narzędzie nie obsługuje SIGTERM, po 10 s SIGKILL;
+wiadomości w locie wrócą przy wznowieniu). Po stopie strażnika: usunąć przyczynę, wstrzymać kompresję i uruchomić oba polecenia ponownie (pełne minuty są pomijane).
+
 ## Źródła pobierania (przygotowanie instalacji offline, etap 7)
 
 Obrazy (tag i digest są w `docker-compose.yml`, `db/Dockerfile`, `tests/Dockerfile`):
